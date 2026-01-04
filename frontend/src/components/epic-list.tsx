@@ -11,10 +11,15 @@ interface EpicListProps {
 export function EpicList({ epics }: EpicListProps) {
   if (epics.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-muted-foreground text-lg">
-          No epics found for this organization
-        </p>
+      <div className="flex items-center justify-center py-16 border border-dashed rounded-lg">
+        <div className="text-center px-4">
+          <p className="text-muted-foreground">
+            No epics yet
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Epics will appear here once created
+          </p>
+        </div>
       </div>
     )
   }

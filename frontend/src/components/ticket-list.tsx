@@ -13,10 +13,15 @@ interface TicketListProps {
 export function TicketList({ tickets, epicId, sliceId }: TicketListProps) {
   if (tickets.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-muted-foreground text-lg">
-          No tickets found for this slice
-        </p>
+      <div className="flex items-center justify-center py-16 border border-dashed rounded-lg">
+        <div className="text-center px-4">
+          <p className="text-muted-foreground">
+            No tickets yet
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            This slice has no tickets
+          </p>
+        </div>
       </div>
     )
   }

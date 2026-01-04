@@ -1,16 +1,35 @@
 "use client"
 
 import * as React from "react"
-import { OrganizationSelector } from "@/components/organization-selector"
 import { EpicList } from "@/components/epic-list"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { getOrganizations, getEpicsByOrganization } from "@/lib/mock-data"
-import { Organization } from "@/lib/types"
+import { Skeleton } from "@/components/ui/skeleton"
+import { getEpics } from "@/lib/api/tickets"
+import { Epic } from "@/lib/types"
 
 export default function Home() {
-  const [selectedOrg, setSelectedOrg] = React.useState<Organization | null>(null)
-  const organizations = getOrganizations()
-  const epics = selectedOrg ? getEpicsByOrganization(selectedOrg.id) : []
+  const [epics, setEpics] = React.useState<Epic[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [error, setError] = React.useState<string | null>(null)
+
+  // Load all epics on mount
+  React.useEffect(() => {
+    async function loadEpics() {
+      try {
+        setIsLoading(true)
+        setError(null)
+        const epicsList = await getEpics()
+        setEpics(epicsList)
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to load epics"
+        console.error("Failed to load epics:", err)
+        setError(errorMessage)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadEpics()
+  }, [])
 
   return (
     <div className="min-h-screen">
@@ -24,42 +43,43 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* Organization Selector Section */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-4">Select Organization</h2>
-          <OrganizationSelector
-            organizations={organizations}
-            selectedOrg={selectedOrg}
-            onSelectOrg={setSelectedOrg}
-          />
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-2">Epics</h2>
+          <p className="text-muted-foreground">
+            View and manage all epics
+          </p>
         </div>
 
-        {/* Epic List Section */}
-        {selectedOrg && (
-          <div>
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-2">{selectedOrg.displayName} Epics</h2>
-              <p className="text-muted-foreground">
-                View and manage epics for {selectedOrg.displayName}
-              </p>
-            </div>
-            <EpicList epics={epics} />
+        {/* Loading State */}
+        {isLoading && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="border rounded-lg p-6">
+                <Skeleton className="h-6 w-3/4 mb-3" />
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-5/6 mb-4" />
+                <Skeleton className="h-5 w-24" />
+              </div>
+            ))}
           </div>
         )}
 
-        {/* Empty State */}
-        {!selectedOrg && (
-          <div className="flex items-center justify-center py-16">
+        {/* Error State */}
+        {error && !isLoading && (
+          <div className="flex items-center justify-center py-8">
             <div className="text-center">
-              <p className="text-lg text-muted-foreground mb-2">
-                Select an organization to view its epics
+              <p className="text-lg text-red-600 dark:text-red-400 mb-2">
+                {error}
               </p>
               <p className="text-sm text-muted-foreground">
-                Choose from {organizations.length} available organizations above
+                MCP tools are required to load data
               </p>
             </div>
           </div>
         )}
+
+        {/* Epic List */}
+        {!isLoading && !error && <EpicList epics={epics} />}
       </main>
     </div>
   )
