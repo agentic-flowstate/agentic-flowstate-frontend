@@ -3,12 +3,31 @@
 import * as React from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Bug, CheckCircle2, Wrench, Star, ExternalLink } from "lucide-react"
+import { ArrowLeft, Bug, CheckCircle2, Wrench, Star, ExternalLink, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getTicketById, getSliceById, getEpicById } from "@/lib/mock-data"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { getTicket, getSlice, getEpic, deleteTicket } from "@/lib/api/tickets"
 import { cn } from "@/lib/utils"
-import { TicketStatus, TicketType } from "@/lib/types"
+import { Epic, Slice, Ticket, TicketStatus, TicketType } from "@/lib/types"
 
 const statusConfig: Record<TicketStatus, { label: string; className: string }> = {
   PENDING: {
@@ -55,11 +74,141 @@ export default function TicketDetailPage() {
   const sliceId = params.sliceId as string
   const epicId = params.id as string
 
-  const ticket = getTicketById(ticketId)
-  const slice = ticket ? getSliceById(ticket.sliceId) : undefined
-  const epic = slice ? getEpicById(slice.epicId) : undefined
+  const [ticket, setTicket] = React.useState<Ticket | undefined>(undefined)
+  const [slice, setSlice] = React.useState<Slice | undefined>(undefined)
+  const [epic, setEpic] = React.useState<Epic | undefined>(undefined)
+  const [relatedTickets, setRelatedTickets] = React.useState<{
+    blocks: (Ticket | undefined)[]
+    blockedBy: (Ticket | undefined)[]
+    causedBy: Ticket | null | undefined
+  }>({ blocks: [], blockedBy: [], causedBy: null })
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [notFound, setNotFound] = React.useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
+  const [deleteError, setDeleteError] = React.useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = React.useState(false)
 
-  if (!ticket || !slice || !epic) {
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        setIsLoading(true)
+        const ticketData = await getTicket(epicId, sliceId, ticketId)
+
+        if (!ticketData) {
+          setNotFound(true)
+          return
+        }
+
+        setTicket(ticketData)
+
+        const [sliceData, epicData] = await Promise.all([
+          getSlice(epicId, sliceId),
+          getEpic(epicId),
+        ])
+
+        if (!sliceData || !epicData) {
+          setNotFound(true)
+          return
+        }
+
+        setSlice(sliceData)
+        setEpic(epicData)
+
+        // Load related tickets - we need to parse the composite IDs
+        // Format: "epic_id#slice_id#ticket_id"
+        const parseTicketId = (compositeId: string) => {
+          const parts = compositeId.split('#')
+          return parts.length === 3 ? { epicId: parts[0], sliceId: parts[1], ticketId: parts[2] } : null
+        }
+
+        const [blocksTickets, blockedByTickets, causedByTicket] = await Promise.all([
+          Promise.all(ticketData.blocks.map((id) => {
+            const parsed = parseTicketId(id)
+            return parsed ? getTicket(parsed.epicId, parsed.sliceId, parsed.ticketId) : undefined
+          })),
+          Promise.all(ticketData.blockedBy.map((id) => {
+            const parsed = parseTicketId(id)
+            return parsed ? getTicket(parsed.epicId, parsed.sliceId, parsed.ticketId) : undefined
+          })),
+          ticketData.causedBy ? (() => {
+            const parsed = parseTicketId(ticketData.causedBy!)
+            return parsed ? getTicket(parsed.epicId, parsed.sliceId, parsed.ticketId) : undefined
+          })() : Promise.resolve(null),
+        ])
+
+        setRelatedTickets({
+          blocks: blocksTickets,
+          blockedBy: blockedByTickets,
+          causedBy: causedByTicket,
+        })
+      } catch (error) {
+        console.error("Failed to load ticket data:", error)
+        setNotFound(true)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    loadData()
+  }, [epicId, sliceId, ticketId])
+
+  const handleDelete = async () => {
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      await deleteTicket(epicId, sliceId, ticketId)
+      router.push(`/epic/${epicId}/slice/${sliceId}`)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete ticket')
+      setIsDeleting(false)
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen">
+        <header className="border-b">
+          <div className="container mx-auto px-4 py-4">
+            <Skeleton className="h-10 w-32" />
+          </div>
+        </header>
+        <main className="container mx-auto px-4 py-8">
+          <Skeleton className="h-4 w-80 mb-6" />
+          <div className="mb-8">
+            <div className="flex items-start gap-3 mb-4">
+              <Skeleton className="h-6 w-6 mt-1" />
+              <div className="flex-1">
+                <Skeleton className="h-9 w-2/3 mb-2" />
+                <Skeleton className="h-5 w-48" />
+              </div>
+            </div>
+          </div>
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-5/6" />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-3/4" />
+              </CardContent>
+            </Card>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  if (notFound || !ticket || !slice || !epic) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -77,10 +226,10 @@ export default function TicketDetailPage() {
   const typeInfo = typeConfig[ticket.type]
   const TypeIcon = typeInfo.icon
 
-  // Get related tickets for relationships
-  const blocksTickets = ticket.blocks.map(id => getTicketById(id)).filter(Boolean)
-  const blockedByTickets = ticket.blockedBy.map(id => getTicketById(id)).filter(Boolean)
-  const causedByTicket = ticket.causedBy ? getTicketById(ticket.causedBy) : null
+  // Get related tickets from state
+  const blocksTickets = relatedTickets.blocks.filter(Boolean)
+  const blockedByTickets = relatedTickets.blockedBy.filter(Boolean)
+  const causedByTicket = relatedTickets.causedBy
 
   return (
     <div className="min-h-screen">
@@ -100,25 +249,49 @@ export default function TicketDetailPage() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        {/* Breadcrumb */}
-        <div className="mb-6">
-          <p className="text-sm text-muted-foreground">
-            <Link href={`/epic/${epicId}`} className="hover:underline">
-              Epic: {epic.title}
-            </Link>
-            {" → "}
-            <Link href={`/epic/${epicId}/slice/${sliceId}`} className="hover:underline">
-              Slice: {slice.title}
-            </Link>
-          </p>
-        </div>
+        {/* Breadcrumbs */}
+        <Breadcrumb className="mb-6">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/">Epics</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href={`/epic/${epicId}`}>{epic.title}</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href={`/epic/${epicId}/slice/${sliceId}`}>{slice.title}</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>{ticket.title}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
 
         {/* Ticket Header */}
         <div className="mb-8">
           <div className="flex items-start gap-3 mb-4">
             <TypeIcon className="h-6 w-6 mt-1 flex-shrink-0 text-muted-foreground" />
             <div className="flex-1">
-              <h1 className="text-3xl font-bold mb-2">{ticket.title}</h1>
+              <div className="flex items-start justify-between gap-4 mb-2">
+                <h1 className="text-3xl font-bold">{ticket.title}</h1>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
               <div className="flex items-center gap-3">
                 <span className="text-sm text-muted-foreground">{typeInfo.label}</span>
                 <span className="text-muted-foreground">•</span>
@@ -133,6 +306,11 @@ export default function TicketDetailPage() {
               </div>
             </div>
           </div>
+          {deleteError && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200">
+              {deleteError}
+            </div>
+          )}
         </div>
 
         {/* Ticket Details */}
@@ -234,6 +412,28 @@ export default function TicketDetailPage() {
           )}
         </div>
       </main>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Ticket</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{ticket.title}&quot;? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
