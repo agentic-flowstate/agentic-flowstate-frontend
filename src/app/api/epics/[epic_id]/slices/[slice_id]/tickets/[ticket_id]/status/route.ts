@@ -4,9 +4,10 @@ import { spawn } from 'child_process'
 // PATCH /api/epics/[epic_id]/slices/[slice_id]/tickets/[ticket_id]/status - Update ticket status
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { epic_id: string; slice_id: string; ticket_id: string } }
+  context: { params: Promise<{ epic_id: string; slice_id: string; ticket_id: string }> }
 ) {
   try {
+    const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
     const body = await request.json()
 

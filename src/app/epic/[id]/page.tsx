@@ -125,8 +125,8 @@ export default function EpicPage() {
 
   return (
     <div>
-        {/* Breadcrumbs */}
-        <Breadcrumb className="mb-6">
+      {/* Breadcrumbs */}
+      <Breadcrumb className="mb-6">
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
@@ -175,7 +175,6 @@ export default function EpicPage() {
           </div>
           <SliceList slices={slices} epicId={epic.epic_id} />
         </div>
-      </main>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

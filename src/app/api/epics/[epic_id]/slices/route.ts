@@ -4,9 +4,10 @@ import { spawn } from 'child_process'
 // GET /api/epics/[epic_id]/slices - List slices for an epic
 export async function GET(
   request: NextRequest,
-  { params }: { params: { epic_id: string } }
+  context: { params: Promise<{ epic_id: string }> }
 ) {
   try {
+    const params = await context.params
     const { epic_id } = params
 
     // Call MCP CLI

@@ -4,9 +4,10 @@ import { spawn } from 'child_process'
 // GET /api/epics/[epic_id]/slices/[slice_id]/tickets/[ticket_id] - Get a single ticket
 export async function GET(
   request: NextRequest,
-  { params }: { params: { epic_id: string; slice_id: string; ticket_id: string } }
+  context: { params: Promise<{ epic_id: string; slice_id: string; ticket_id: string }> }
 ) {
   try {
+    const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
 
     // Call MCP CLI
@@ -72,9 +73,10 @@ export async function GET(
 // DELETE /api/epics/[epic_id]/slices/[slice_id]/tickets/[ticket_id] - Delete a ticket
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { epic_id: string; slice_id: string; ticket_id: string } }
+  context: { params: Promise<{ epic_id: string; slice_id: string; ticket_id: string }> }
 ) {
   try {
+    const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
 
     // Call MCP CLI

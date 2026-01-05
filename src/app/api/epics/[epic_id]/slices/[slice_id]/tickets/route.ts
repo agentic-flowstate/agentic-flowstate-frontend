@@ -4,9 +4,10 @@ import { spawn } from 'child_process'
 // GET /api/epics/[epic_id]/slices/[slice_id]/tickets - List tickets for a slice
 export async function GET(
   request: NextRequest,
-  { params }: { params: { epic_id: string; slice_id: string } }
+  context: { params: Promise<{ epic_id: string; slice_id: string }> }
 ) {
   try {
+    const params = await context.params
     const { epic_id, slice_id } = params
 
     // Call MCP CLI
@@ -61,9 +62,10 @@ export async function GET(
 // POST /api/epics/[epic_id]/slices/[slice_id]/tickets - Create a new ticket
 export async function POST(
   request: NextRequest,
-  { params }: { params: { epic_id: string; slice_id: string } }
+  context: { params: Promise<{ epic_id: string; slice_id: string }> }
 ) {
   try {
+    const params = await context.params
     const { epic_id, slice_id } = params
     const body = await request.json()
 
