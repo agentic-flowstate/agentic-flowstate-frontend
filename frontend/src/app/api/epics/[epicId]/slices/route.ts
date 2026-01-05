@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export async function GET(
   request: Request,
-  { params }: { params: { epicId: string } }
+  { params }: { params: Promise<{ epicId: string }> }
 ) {
   try {
     // @ts-ignore - MCP runtime injected
@@ -10,7 +10,7 @@ export async function GET(
       throw new Error('MCP client not available on server')
     }
 
-    const { epicId } = params
+    const { epicId } = await params
 
     // @ts-ignore
     const slices = await global.mcpClient.callTool('mcp__agentic-mcp__list_slices', {

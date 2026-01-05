@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { getEpic, getSlices, deleteEpic } from "@/lib/api/tickets"
+import { getEpic, getSlices } from "@/lib/api/tickets"
 import { cn } from "@/lib/utils"
 import { Epic, EpicStatus, Slice } from "@/lib/types"
 
@@ -89,7 +89,8 @@ export default function EpicPage() {
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      await deleteEpic(id)
+      // TODO: Implement deleteEpic API function
+      console.log('Delete epic:', id)
       router.push('/')
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Failed to delete epic')

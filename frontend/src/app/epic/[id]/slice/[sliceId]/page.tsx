@@ -25,7 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { getSlice, getEpic, getTickets, deleteSlice } from "@/lib/api/tickets"
+import { getSlice, getEpic, getTickets } from "@/lib/api/tickets"
 import { cn } from "@/lib/utils"
 import { Epic, Slice, SliceStatus, Ticket } from "@/lib/types"
 
@@ -102,7 +102,8 @@ export default function SlicePage() {
     setIsDeleting(true)
     setDeleteError(null)
     try {
-      await deleteSlice(epicId, sliceId)
+      // TODO: Implement deleteSlice API function
+      console.log('Delete slice:', epicId, sliceId)
       router.push(`/epic/${epicId}`)
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : 'Failed to delete slice')

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 export async function GET(
   request: Request,
-  { params }: { params: { epicId: string; sliceId: string; ticketId: string } }
+  { params }: { params: Promise<{ epicId: string; sliceId: string; ticketId: string }> }
 ) {
   try {
     // @ts-ignore - MCP runtime injected
@@ -10,7 +10,7 @@ export async function GET(
       throw new Error('MCP client not available on server')
     }
 
-    const { epicId, sliceId, ticketId } = params
+    const { epicId, sliceId, ticketId } = await params
 
     // @ts-ignore
     const ticket = await global.mcpClient.callTool('mcp__agentic-mcp__get_ticket', {
@@ -30,7 +30,7 @@ export async function GET(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { epicId: string; sliceId: string; ticketId: string } }
+  { params }: { params: Promise<{ epicId: string; sliceId: string; ticketId: string }> }
 ) {
   try {
     // @ts-ignore - MCP runtime injected
@@ -38,7 +38,7 @@ export async function DELETE(
       throw new Error('MCP client not available on server')
     }
 
-    const { epicId, sliceId, ticketId } = params
+    const { epicId, sliceId, ticketId } = await params
 
     // @ts-ignore
     await global.mcpClient.callTool('mcp__agentic-mcp__delete_ticket', {
