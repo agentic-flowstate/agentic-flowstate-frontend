@@ -2,15 +2,7 @@ import type { NextConfig } from 'next'
 
 const config: NextConfig = {
     generateEtags: false,
-    poweredByHeader: false,
-    async rewrites() {
-        return [
-            {
-                source: '/api/:path*',
-                destination: 'http://localhost:5001/api/:path*'
-            }
-        ]
-    }
+    poweredByHeader: false
 }
 
 export default config
