@@ -27,26 +27,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { getEpic, getSlices } from "@/lib/api/tickets"
 import { cn } from "@/lib/utils"
-import { Epic, EpicStatus, Slice } from "@/lib/types"
-
-const statusConfig: Record<EpicStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: "Pending",
-    className: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  },
-  IN_PROGRESS: {
-    label: "In Progress",
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  },
-  COMPLETED: {
-    label: "Completed",
-    className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
-  BLOCKED: {
-    label: "Blocked",
-    className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  },
-}
+import { Epic, Slice } from "@/lib/types"
 
 export default function EpicPage() {
   const router = useRouter()
@@ -73,7 +54,7 @@ export default function EpicPage() {
         }
 
         setEpic(epicData)
-        const slicesData = await getSlices(epicData.id)
+        const slicesData = await getSlices(epicData.epic_id)
         setSlices(slicesData)
       } catch (error) {
         console.error("Failed to load epic data:", error)
@@ -146,8 +127,6 @@ export default function EpicPage() {
     )
   }
 
-  const statusInfo = statusConfig[epic.status]
-
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -185,28 +164,20 @@ export default function EpicPage() {
         <div className="mb-8">
           <div className="flex items-start justify-between gap-4 mb-4">
             <h1 className="text-3xl font-bold">{epic.title}</h1>
-            <div className="flex items-center gap-3">
-              <span
-                className={cn(
-                  "px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap",
-                  statusInfo.className
-                )}
-              >
-                {statusInfo.label}
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Epic
-              </Button>
-            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Epic
+            </Button>
           </div>
-          <p className="text-lg text-muted-foreground">
-            {epic.description}
-          </p>
+          {epic.notes && (
+            <p className="text-lg text-muted-foreground">
+              {epic.notes}
+            </p>
+          )}
           {deleteError && (
             <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200">
               {deleteError}
@@ -222,7 +193,7 @@ export default function EpicPage() {
               {slices.length} {slices.length === 1 ? "slice" : "slices"} for this epic
             </p>
           </div>
-          <SliceList slices={slices} epicId={epic.id} />
+          <SliceList slices={slices} epicId={epic.epic_id} />
         </div>
       </main>
 

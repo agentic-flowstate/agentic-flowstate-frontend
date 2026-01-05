@@ -30,21 +30,25 @@ import { cn } from "@/lib/utils"
 import { Epic, Slice, Ticket, TicketStatus, TicketType } from "@/lib/types"
 
 const statusConfig: Record<TicketStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: "Pending",
+  open: {
+    label: "Open",
     className: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
   },
-  IN_PROGRESS: {
+  in_progress: {
     label: "In Progress",
     className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   },
-  COMPLETED: {
+  completed: {
     label: "Completed",
     className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   },
-  BLOCKED: {
+  blocked: {
     label: "Blocked",
     className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  },
+  closed: {
+    label: "Closed",
+    className: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   },
 }
 
@@ -80,8 +84,8 @@ export default function TicketDetailPage() {
   const [relatedTickets, setRelatedTickets] = React.useState<{
     blocks: (Ticket | undefined)[]
     blockedBy: (Ticket | undefined)[]
-    causedBy: Ticket | null | undefined
-  }>({ blocks: [], blockedBy: [], causedBy: null })
+    causedBy: (Ticket | undefined)[]
+  }>({ blocks: [], blockedBy: [], causedBy: [] })
   const [isLoading, setIsLoading] = React.useState(true)
   const [notFound, setNotFound] = React.useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false)
@@ -121,25 +125,25 @@ export default function TicketDetailPage() {
           return parts.length === 3 ? { epicId: parts[0], sliceId: parts[1], ticketId: parts[2] } : null
         }
 
-        const [blocksTickets, blockedByTickets, causedByTicket] = await Promise.all([
-          Promise.all(ticketData.blocks.map((id) => {
+        const [blocksTickets, blockedByTickets, causedByTickets] = await Promise.all([
+          Promise.all((ticketData.blocks_tickets || []).map((id) => {
             const parsed = parseTicketId(id)
             return parsed ? getTicket(parsed.epicId, parsed.sliceId, parsed.ticketId) : undefined
           })),
-          Promise.all(ticketData.blockedBy.map((id) => {
+          Promise.all((ticketData.blocked_by_tickets || []).map((id) => {
             const parsed = parseTicketId(id)
             return parsed ? getTicket(parsed.epicId, parsed.sliceId, parsed.ticketId) : undefined
           })),
-          ticketData.causedBy ? (() => {
-            const parsed = parseTicketId(ticketData.causedBy!)
+          Promise.all((ticketData.caused_by_tickets || []).map((id) => {
+            const parsed = parseTicketId(id)
             return parsed ? getTicket(parsed.epicId, parsed.sliceId, parsed.ticketId) : undefined
-          })() : Promise.resolve(null),
+          })),
         ])
 
         setRelatedTickets({
           blocks: blocksTickets,
           blockedBy: blockedByTickets,
-          causedBy: causedByTicket,
+          causedBy: causedByTickets,
         })
       } catch (error) {
         console.error("Failed to load ticket data:", error)
@@ -229,7 +233,7 @@ export default function TicketDetailPage() {
   // Get related tickets from state
   const blocksTickets = relatedTickets.blocks.filter(Boolean)
   const blockedByTickets = relatedTickets.blockedBy.filter(Boolean)
-  const causedByTicket = relatedTickets.causedBy
+  const causedByTickets = relatedTickets.causedBy.filter(Boolean)
 
   return (
     <div className="min-h-screen">
@@ -338,27 +342,32 @@ export default function TicketDetailPage() {
           </Card>
 
           {/* Relationships */}
-          {(blocksTickets.length > 0 || blockedByTickets.length > 0 || causedByTicket) && (
+          {(blocksTickets.length > 0 || blockedByTickets.length > 0 || causedByTickets.length > 0) && (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Relationships</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Caused By */}
-                {causedByTicket && (
+                {causedByTickets.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold mb-2 text-muted-foreground">
-                      Caused By
+                      Caused By ({causedByTickets.length})
                     </h3>
-                    <Link
-                      href={`/epic/${epicId}/slice/${causedByTicket.sliceId}/ticket/${causedByTicket.id}`}
-                      className="block"
-                    >
-                      <div className="flex items-center gap-2 p-3 border rounded-lg hover:bg-accent transition-colors group">
-                        <span className="flex-1 text-sm">{causedByTicket.title}</span>
-                        <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-                      </div>
-                    </Link>
+                    <div className="space-y-2">
+                      {causedByTickets.map((causedTicket) => (
+                        <Link
+                          key={causedTicket!.ticket_id}
+                          href={`/epic/${epicId}/slice/${causedTicket!.slice_id}/ticket/${causedTicket!.ticket_id}`}
+                          className="block"
+                        >
+                          <div className="flex items-center gap-2 p-3 border rounded-lg hover:bg-accent transition-colors group">
+                            <span className="flex-1 text-sm">{causedTicket!.title}</span>
+                            <ExternalLink className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -371,8 +380,8 @@ export default function TicketDetailPage() {
                     <div className="space-y-2">
                       {blocksTickets.map((blockedTicket) => (
                         <Link
-                          key={blockedTicket!.id}
-                          href={`/epic/${epicId}/slice/${blockedTicket!.sliceId}/ticket/${blockedTicket!.id}`}
+                          key={blockedTicket!.ticket_id}
+                          href={`/epic/${epicId}/slice/${blockedTicket!.slice_id}/ticket/${blockedTicket!.ticket_id}`}
                           className="block"
                         >
                           <div className="flex items-center gap-2 p-3 border rounded-lg hover:bg-accent transition-colors group">
@@ -394,8 +403,8 @@ export default function TicketDetailPage() {
                     <div className="space-y-2">
                       {blockedByTickets.map((blockingTicket) => (
                         <Link
-                          key={blockingTicket!.id}
-                          href={`/epic/${epicId}/slice/${blockingTicket!.sliceId}/ticket/${blockingTicket!.id}`}
+                          key={blockingTicket!.ticket_id}
+                          href={`/epic/${epicId}/slice/${blockingTicket!.slice_id}/ticket/${blockingTicket!.ticket_id}`}
                           className="block"
                         >
                           <div className="flex items-center gap-2 p-3 border rounded-lg hover:bg-accent transition-colors group">

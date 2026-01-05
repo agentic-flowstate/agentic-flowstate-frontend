@@ -14,21 +14,25 @@ interface TicketCardProps {
 }
 
 const statusConfig: Record<TicketStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: "Pending",
+  open: {
+    label: "Open",
     className: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
   },
-  IN_PROGRESS: {
+  in_progress: {
     label: "In Progress",
     className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   },
-  COMPLETED: {
+  completed: {
     label: "Completed",
     className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   },
-  BLOCKED: {
+  blocked: {
     label: "Blocked",
     className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  },
+  closed: {
+    label: "Closed",
+    className: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   },
 }
 
@@ -57,7 +61,7 @@ export function TicketCard({ ticket, epicId, sliceId }: TicketCardProps) {
   const TypeIcon = typeInfo.icon
 
   return (
-    <Link href={`/epic/${epicId}/slice/${sliceId}/ticket/${ticket.id}`}>
+    <Link href={`/epic/${epicId}/slice/${sliceId}/ticket/${ticket.ticket_id}`}>
       <Card className="hover:shadow-md transition-shadow cursor-pointer">
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-2">

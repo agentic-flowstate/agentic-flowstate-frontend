@@ -29,7 +29,7 @@ export function TicketList({ tickets, epicId, sliceId }: TicketListProps) {
   return (
     <div className="space-y-3">
       {tickets.map((ticket) => (
-        <TicketCard key={ticket.id} ticket={ticket} epicId={epicId} sliceId={sliceId} />
+        <TicketCard key={ticket.ticket_id} ticket={ticket} epicId={epicId} sliceId={sliceId} />
       ))}
     </div>
   )

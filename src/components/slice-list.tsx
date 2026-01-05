@@ -28,7 +28,7 @@ export function SliceList({ slices, epicId }: SliceListProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {slices.map((slice) => (
-        <SliceCard key={slice.id} slice={slice} epicId={epicId} />
+        <SliceCard key={slice.slice_id} slice={slice} epicId={epicId} />
       ))}
     </div>
   )

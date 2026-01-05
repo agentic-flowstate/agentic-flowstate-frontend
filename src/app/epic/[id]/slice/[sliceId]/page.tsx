@@ -27,26 +27,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { getSlice, getEpic, getTickets } from "@/lib/api/tickets"
 import { cn } from "@/lib/utils"
-import { Epic, Slice, SliceStatus, Ticket } from "@/lib/types"
-
-const statusConfig: Record<SliceStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: "Pending",
-    className: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  },
-  IN_PROGRESS: {
-    label: "In Progress",
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  },
-  COMPLETED: {
-    label: "Completed",
-    className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
-  BLOCKED: {
-    label: "Blocked",
-    className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  },
-}
+import { Epic, Slice, Ticket } from "@/lib/types"
 
 export default function SlicePage() {
   const router = useRouter()
@@ -163,8 +144,6 @@ export default function SlicePage() {
     )
   }
 
-  const statusInfo = statusConfig[slice.status]
-
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -206,29 +185,21 @@ export default function SlicePage() {
 
         {/* Slice Header */}
         <div className="mb-8">
-          {/* Slice Title and Status */}
+          {/* Slice Title */}
           <div className="flex items-start justify-between gap-4 mb-4">
             <h1 className="text-3xl font-bold">{slice.title}</h1>
-            <div className="flex items-center gap-3">
-              <span
-                className={cn(
-                  "px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap",
-                  statusInfo.className
-                )}
-              >
-                {statusInfo.label}
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setDeleteDialogOpen(true)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete Slice
-              </Button>
-            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Slice
+            </Button>
           </div>
-          <p className="text-lg text-muted-foreground">{slice.description}</p>
+          {slice.notes && (
+            <p className="text-lg text-muted-foreground">{slice.notes}</p>
+          )}
           {deleteError && (
             <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-800 dark:text-red-200">
               {deleteError}

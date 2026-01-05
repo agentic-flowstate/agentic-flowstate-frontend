@@ -4,31 +4,11 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import { Calendar, Clock } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Slice, SliceStatus } from "@/lib/types"
-import { cn } from "@/lib/utils"
+import { Slice } from "@/lib/types"
 
 interface SliceCardProps {
   slice: Slice
   epicId: string
-}
-
-const statusConfig: Record<SliceStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: "Pending",
-    className: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
-  },
-  IN_PROGRESS: {
-    label: "In Progress",
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
-  },
-  COMPLETED: {
-    label: "Completed",
-    className: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  },
-  BLOCKED: {
-    label: "Blocked",
-    className: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  },
 }
 
 function formatDate(dateString: string): string {
@@ -42,10 +22,9 @@ function formatDate(dateString: string): string {
 
 export function SliceCard({ slice, epicId }: SliceCardProps) {
   const router = useRouter()
-  const statusInfo = statusConfig[slice.status]
 
   const handleClick = () => {
-    router.push(`/epic/${epicId}/slice/${slice.id}`)
+    router.push(`/epic/${epicId}/slice/${slice.slice_id}`)
   }
 
   return (
@@ -54,30 +33,22 @@ export function SliceCard({ slice, epicId }: SliceCardProps) {
       onClick={handleClick}
     >
       <CardHeader>
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <CardTitle className="text-lg">{slice.title}</CardTitle>
-          <span
-            className={cn(
-              "px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap",
-              statusInfo.className
-            )}
-          >
-            {statusInfo.label}
-          </span>
-        </div>
-        <CardDescription className="line-clamp-2">
-          {slice.description}
-        </CardDescription>
+        <CardTitle className="text-lg">{slice.title}</CardTitle>
+        {slice.notes && (
+          <CardDescription className="line-clamp-2">
+            {slice.notes}
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
             <Calendar className="h-3.5 w-3.5" />
-            <span>{formatDate(slice.createdAt)}</span>
+            <span>{formatDate(slice.created_at_iso)}</span>
           </div>
           <div className="flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" />
-            <span>{formatDate(slice.updatedAt)}</span>
+            <span>{formatDate(slice.updated_at_iso)}</span>
           </div>
         </div>
       </CardContent>

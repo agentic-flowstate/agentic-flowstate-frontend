@@ -27,7 +27,7 @@ export function EpicList({ epics }: EpicListProps) {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {epics.map((epic) => (
-        <EpicCard key={epic.id} epic={epic} />
+        <EpicCard key={epic.epic_id} epic={epic} />
       ))}
     </div>
   )
