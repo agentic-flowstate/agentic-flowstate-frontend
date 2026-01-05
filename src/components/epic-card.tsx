@@ -28,26 +28,26 @@ export function EpicCard({ epic }: EpicCardProps) {
 
   return (
     <Card
-      className="hover:shadow-lg transition-shadow cursor-pointer"
+      className="hover:shadow-lg hover:scale-[1.02] transition-all cursor-pointer border-border/50 bg-card/50 backdrop-blur-sm"
       onClick={handleClick}
     >
-      <CardHeader>
-        <CardTitle className="text-xl">{epic.title}</CardTitle>
+      <CardHeader className="space-y-3">
+        <CardTitle className="text-xl font-semibold tracking-tight">{epic.title}</CardTitle>
         {epic.notes && (
-          <CardDescription className="line-clamp-2">
+          <CardDescription className="line-clamp-2 text-base">
             {epic.notes}
           </CardDescription>
         )}
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
-            <span>{formatDate(epic.created_at_iso)}</span>
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5 opacity-70" />
+            <span className="font-medium">{formatDate(epic.created_at_iso)}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            <span>{formatDate(epic.updated_at_iso)}</span>
+          <div className="flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5 opacity-70" />
+            <span className="font-medium">{formatDate(epic.updated_at_iso)}</span>
           </div>
         </div>
       </CardContent>
