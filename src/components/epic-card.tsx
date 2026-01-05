@@ -23,7 +23,7 @@ export function EpicCard({ epic }: EpicCardProps) {
   const router = useRouter()
 
   const handleClick = () => {
-    router.push(`/epic/${epic.epic_id}`)
+    router.push(`/workspace/${epic.epic_id}`)
   }
 
   return (

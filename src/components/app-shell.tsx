@@ -13,24 +13,33 @@ export function AppShell({ children }: AppShellProps) {
   const { organizations, selectedOrg, selectOrg } = useOrganization()
 
   return (
-    <div className="min-h-screen">
-      {/* Global Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          {/* Organization Selector */}
-          <OrganizationSelector
-            organizations={organizations}
-            selectedOrg={selectedOrg}
-            onSelectOrg={selectOrg}
-          />
+    <div className="min-h-screen bg-zinc-950">
+      {/* Minimal Technical Header */}
+      <header className="fixed top-0 z-50 w-full h-12 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800/50">
+        <div className="h-full px-4 flex items-center justify-between">
+          {/* Left side - Compact controls */}
+          <div className="flex items-center gap-3">
+            <OrganizationSelector
+              organizations={organizations}
+              selectedOrg={selectedOrg}
+              onSelectOrg={selectOrg}
+            />
 
-          {/* Theme Toggle */}
+            {/* Org indicator */}
+            {selectedOrg && (
+              <div className="text-xs text-zinc-500 font-mono">
+                [{selectedOrg.displayName}]
+              </div>
+            )}
+          </div>
+
+          {/* Right side - Minimal theme toggle */}
           <ThemeToggle />
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-12">
+      {/* Main Content - with top padding for fixed header */}
+      <main className="pt-12 min-h-screen">
         {children}
       </main>
     </div>
