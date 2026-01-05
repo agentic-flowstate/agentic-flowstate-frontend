@@ -1,15 +1,15 @@
 /**
  * Data Access Layer for Ticketing System
  *
- * This module provides async functions to access ticketing data via the backend API server.
- * All calls go directly to http://localhost:8000/api/* endpoints.
- * No mock data, no fallbacks - backend API is the sole data source.
+ * This module provides async functions to access ticketing data via Next.js API routes.
+ * All calls go to relative /api/* endpoints handled by Next.js.
+ * No mock data, no fallbacks - Next.js API routes are the sole data source.
  */
 
 import { Epic, Slice, Ticket } from "@/lib/types"
 
-// Backend API base URL
-const API_BASE_URL = 'http://localhost:8000'
+// Use relative URLs for Next.js API routes
+const API_BASE_URL = ''
 
 /**
  * Call API endpoint and handle errors
@@ -45,7 +45,7 @@ async function callAPI<T>(path: string, options?: RequestInit): Promise<T> {
     return await response.json()
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      throw new Error('Unable to connect to backend API server at ' + API_BASE_URL)
+      throw new Error('Unable to connect to API routes')
     }
     throw new Error(`API call failed: ${error instanceof Error ? error.message : 'unknown error'}`)
   }
