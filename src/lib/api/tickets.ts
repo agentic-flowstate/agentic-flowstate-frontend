@@ -3,13 +3,21 @@
  *
  * This module provides async functions to access ticketing data via Next.js API routes.
  * All calls go to relative /api/* endpoints handled by Next.js.
- * No mock data, no fallbacks - Next.js API routes are the sole data source.
+ * Organization context is passed via headers to all API calls.
  */
 
 import { Epic, Slice, Ticket } from "@/lib/types"
+import type { OrganizationId } from "@/contexts/organization-context"
 
 // Use relative URLs for Next.js API routes
 const API_BASE_URL = ''
+
+// Get current organization from localStorage (client-side only)
+function getCurrentOrg(): OrganizationId | null {
+  if (typeof window === 'undefined') return null
+  const stored = localStorage.getItem('selected-organization')
+  return stored as OrganizationId | null
+}
 
 /**
  * Call API endpoint and handle errors
@@ -17,10 +25,13 @@ const API_BASE_URL = ''
 async function callAPI<T>(path: string, options?: RequestInit): Promise<T> {
   try {
     const url = `${API_BASE_URL}${path}`
+    const currentOrg = getCurrentOrg()
+
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'X-Organization': currentOrg || 'telemetryops', // Default to telemetryops
         ...options?.headers,
       },
     })

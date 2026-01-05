@@ -4,7 +4,11 @@ import { spawn } from 'child_process'
 // GET /api/epics - List all epics
 export async function GET(request: NextRequest) {
   try {
-    // Call MCP CLI
+    // Extract organization context from headers
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
+    console.log(`[API] Fetching epics for organization: ${organization}`)
+
+    // Call MCP CLI (org context will be used in future)
     const result = await new Promise<string>((resolve, reject) => {
       const pythonPath = '/opt/homebrew/bin/python3.13'
       const mcpPath = '/Users/jarvisgpt/projects/agentic-flowstate-mcp'

@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
+import { OrganizationProvider } from '@/contexts/organization-context'
+import { AppShell } from '@/components/app-shell'
 
 export const metadata: Metadata = {
-  title: 'Agentic Frontend',
-  description: 'Epic and ticket management dashboard',
+  title: 'Agentic Ticketing',
+  description: 'Multi-organization epic and ticket management',
 }
 
 export default function RootLayout({
@@ -21,7 +23,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <OrganizationProvider>
+            <AppShell>
+              {children}
+            </AppShell>
+          </OrganizationProvider>
         </ThemeProvider>
       </body>
     </html>

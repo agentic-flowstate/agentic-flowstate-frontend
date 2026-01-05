@@ -81,13 +81,9 @@ export default function EpicPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen">
-        <header className="border-b">
-          <div className="container mx-auto px-4 py-4">
-            <Skeleton className="h-10 w-32" />
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-8">
+      <div>
+        <div className="mb-4">
+          <Skeleton className="h-4 w-48 mb-6" />
           <Skeleton className="h-4 w-48 mb-6" />
           <div className="mb-8">
             <Skeleton className="h-9 w-2/3 mb-4" />
@@ -108,14 +104,14 @@ export default function EpicPage() {
               </div>
             ))}
           </div>
-        </main>
+        </div>
       </div>
     )
   }
 
   if (notFound || !epic) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Epic not found</h1>
           <Button onClick={() => router.push("/")}>
@@ -128,23 +124,7 @@ export default function EpicPage() {
   }
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b">
-        <div className="container mx-auto px-4 py-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/")}
-            className="mb-2"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Epics
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+    <div>
         {/* Breadcrumbs */}
         <Breadcrumb className="mb-6">
           <BreadcrumbList>

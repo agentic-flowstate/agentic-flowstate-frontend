@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Organization } from "@/lib/types"
+import type { Organization } from "@/contexts/organization-context"
 
 interface OrganizationSelectorProps {
   organizations: Organization[]

@@ -2,17 +2,18 @@
 
 import * as React from "react"
 import { EpicList } from "@/components/epic-list"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getEpics } from "@/lib/api/tickets"
 import { Epic } from "@/lib/types"
+import { useOrganization } from "@/contexts/organization-context"
 
 export default function Home() {
   const [epics, setEpics] = React.useState<Epic[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
+  const { selectedOrg } = useOrganization()
 
-  // Load all epics on mount
+  // Reload epics when organization changes
   React.useEffect(() => {
     async function loadEpics() {
       try {
@@ -28,31 +29,20 @@ export default function Home() {
         setIsLoading(false)
       }
     }
-    loadEpics()
-  }, [])
+
+    if (selectedOrg) {
+      loadEpics()
+    }
+  }, [selectedOrg])
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-background/95">
-      {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
-              Agentic Frontend
-            </h1>
-          </div>
-          <ThemeToggle />
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-6 py-12">
-        <div className="mb-8 space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight">Epics</h2>
-          <p className="text-muted-foreground text-lg">
-            View and manage all epics in your workspace
-          </p>
-        </div>
+    <>
+      <div className="mb-8 space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Epics</h2>
+        <p className="text-muted-foreground text-lg">
+          View and manage epics in {selectedOrg?.displayName || 'your organization'}
+        </p>
+      </div>
 
         {/* Loading State */}
         {isLoading && (
@@ -88,9 +78,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Epic List */}
-        {!isLoading && !error && <EpicList epics={epics} />}
-      </main>
-    </div>
+      {/* Epic List */}
+      {!isLoading && !error && <EpicList epics={epics} />}
+    </>
   )
 }
