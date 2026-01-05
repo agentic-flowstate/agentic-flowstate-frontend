@@ -1,41 +1,43 @@
-export type EpicStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED"
-export type SliceStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED"
-export type TicketStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED"
+export type TicketStatus = "open" | "in_progress" | "completed" | "blocked" | "closed"
 export type TicketType = "task" | "bug" | "feature" | "chore"
+export type TicketPriority = "low" | "medium" | "high" | "critical"
 
 export interface Epic {
-  id: string
+  epic_id: string
   title: string
-  description: string
-  status: EpicStatus
-  organization: string
-  createdAt: string
-  updatedAt: string
+  notes?: string
+  created_at_iso: string
+  updated_at_iso: string
 }
 
 export interface Slice {
-  id: string
-  epicId: string
+  slice_id: string
+  epic_id: string
   title: string
-  description: string
-  status: SliceStatus
-  createdAt: string
-  updatedAt: string
+  notes?: string
+  created_at_iso: string
+  updated_at_iso: string
 }
 
 export interface Ticket {
-  id: string
-  sliceId: string
+  ticket_id: string
+  epic_id: string
+  slice_id: string
   title: string
+  intent: string
+  description?: string
   type: TicketType
   status: TicketStatus
-  intent: string
-  notes: string
-  blocks: string[]
-  blockedBy: string[]
-  causedBy: string | null
-  createdAt: string
-  updatedAt: string
+  priority?: TicketPriority
+  assignee?: string
+  notes?: string
+  blocks_tickets?: string[]
+  blocked_by_tickets?: string[]
+  caused_by_tickets?: string[]
+  created_at: number
+  updated_at: number
+  created_at_iso: string
+  updated_at_iso: string
 }
 
 export interface Organization {
