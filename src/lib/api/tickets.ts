@@ -67,8 +67,7 @@ async function callAPI<T>(path: string, options?: RequestInit): Promise<T> {
  * @returns Promise resolving to list of all epics
  */
 export async function getEpics(): Promise<Epic[]> {
-  const response = await callAPI<{ epics: Epic[] }>('/api/epics')
-  return response.epics || []
+  return callAPI<Epic[]>('/api/epics')
 }
 
 /**
