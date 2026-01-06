@@ -6,8 +6,11 @@ export interface Epic {
   epic_id: string
   title: string
   notes?: string
+  assignees?: string[]
   created_at_iso: string
   updated_at_iso: string
+  slice_count?: number
+  ticket_count?: number
 }
 
 export interface Slice {
@@ -15,8 +18,10 @@ export interface Slice {
   epic_id: string
   title: string
   notes?: string
+  assignees?: string[]
   created_at_iso: string
   updated_at_iso: string
+  ticket_count?: number
 }
 
 export interface Ticket {

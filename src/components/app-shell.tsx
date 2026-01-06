@@ -1,7 +1,6 @@
 "use client"
 
 import React from 'react'
-import { OrganizationSelector } from '@/components/organization-selector'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useOrganization } from '@/contexts/organization-context'
 
@@ -10,31 +9,24 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const { organizations, selectedOrg, selectOrg } = useOrganization()
+  const { selectedOrg } = useOrganization()
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-background">
       {/* Minimal Technical Header */}
-      <header className="fixed top-0 z-50 w-full h-12 bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-800/50">
+      <header className="fixed top-0 z-50 w-full h-12 bg-background/80 backdrop-blur-sm border-b border-border">
         <div className="h-full px-4 flex items-center justify-between">
-          {/* Left side - Compact controls */}
+          {/* Left side - Org indicator */}
           <div className="flex items-center gap-3">
-            <OrganizationSelector
-              organizations={organizations}
-              selectedOrg={selectedOrg}
-              onSelectOrg={selectOrg}
-            />
-
-            {/* Org indicator */}
-            {selectedOrg && (
-              <div className="text-xs text-zinc-500 font-mono">
-                [{selectedOrg.displayName}]
-              </div>
-            )}
+            <span className="text-xs font-mono text-muted-foreground">
+              [{selectedOrg?.id || 'no-org'}]
+            </span>
           </div>
 
-          {/* Right side - Minimal theme toggle */}
-          <ThemeToggle />
+          {/* Right side - Theme toggle only */}
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

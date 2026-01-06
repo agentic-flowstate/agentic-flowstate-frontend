@@ -30,10 +30,10 @@ export function OrganizationSelector({
           variant="ghost"
           size="sm"
           role="combobox"
-          className="h-8 px-2 py-1 text-xs font-mono text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50"
+          className="h-8 px-2 py-1 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-accent"
         >
           <div className="flex items-center gap-1.5">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/60" />
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
             <span>
               {selectedOrg ? selectedOrg.id : "org"}
             </span>
@@ -41,17 +41,17 @@ export function OrganizationSelector({
           </div>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-48 bg-zinc-900 border-zinc-800">
+      <DropdownMenuContent className="w-48">
         {organizations.map((org) => (
           <DropdownMenuItem
             key={org.id}
             onClick={() => onSelectOrg(org)}
-            className="flex items-center justify-between text-xs font-mono text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50 focus:bg-zinc-800/50"
+            className="flex items-center justify-between text-xs font-mono"
           >
             <div className="flex items-center gap-2">
               <div className={cn(
                 "w-1.5 h-1.5 rounded-full",
-                selectedOrg?.id === org.id ? "bg-emerald-500" : "bg-zinc-600"
+                selectedOrg?.id === org.id ? "bg-emerald-500" : "bg-muted-foreground"
               )} />
               <span>{org.id}</span>
             </div>

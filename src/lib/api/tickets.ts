@@ -72,6 +72,21 @@ export async function getEpics(): Promise<Epic[]> {
 }
 
 /**
+ * Create a new epic
+ * @param epic - Epic data (without timestamps which will be generated)
+ * @returns Promise resolving to created epic
+ */
+export async function createEpic(
+  epic: Omit<Epic, 'created_at_iso' | 'updated_at_iso'>
+): Promise<Epic> {
+  const response = await callAPI<{ epic: Epic }>('/api/epics', {
+    method: 'POST',
+    body: JSON.stringify(epic)
+  })
+  return response.epic
+}
+
+/**
  * Get a single epic by ID
  * @param epicId - Epic ID to retrieve
  * @returns Promise resolving to epic or undefined if not found
@@ -102,13 +117,22 @@ export async function getSlice(epicId: string, sliceId: string): Promise<Slice |
 }
 
 /**
- * Get all tickets for a specific epic or slice
+ * Get all tickets for a specific slice
  * @param epicId - Epic ID to filter tickets
  * @param sliceId - Slice ID to filter tickets
  * @returns Promise resolving to list of tickets
  */
 export async function getTickets(epicId: string, sliceId: string): Promise<Ticket[]> {
   return callAPI<Ticket[]>(`/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets`)
+}
+
+/**
+ * Get ALL tickets for an entire epic (across all slices)
+ * @param epicId - Epic ID to get all tickets for
+ * @returns Promise resolving to list of all tickets in the epic
+ */
+export async function getAllEpicTickets(epicId: string): Promise<Ticket[]> {
+  return callAPI<Ticket[]>(`/api/epics/${encodeURIComponent(epicId)}/tickets`)
 }
 
 /**
@@ -165,6 +189,26 @@ export async function updateTicketStatus(
   return callAPI<Ticket>(`/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets/${encodeURIComponent(ticketId)}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ status })
+  })
+}
+
+/**
+ * Update ticket notes
+ * @param epicId - Epic ID
+ * @param sliceId - Slice ID
+ * @param ticketId - Ticket ID
+ * @param notes - New notes content
+ * @returns Promise resolving to updated ticket
+ */
+export async function updateTicketNotes(
+  epicId: string,
+  sliceId: string,
+  ticketId: string,
+  notes: string
+): Promise<Ticket> {
+  return callAPI<Ticket>(`/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets/${encodeURIComponent(ticketId)}/notes`, {
+    method: 'PATCH',
+    body: JSON.stringify({ notes })
   })
 }
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+const API_URL = 'http://127.0.0.1:8001'
+
 // GET /api/epics/[epic_id] - Get epic details
 export async function GET(
   request: NextRequest,
@@ -8,19 +10,65 @@ export async function GET(
   try {
     const { epic_id } = await params
 
-    // TODO: Implement DynamoDB query
-    return NextResponse.json({
-      epic: {
-        epic_id,
-        title: `Epic ${epic_id}`,
-        notes: 'Placeholder epic data'
-      },
-      message: 'Epic detail retrieval not yet implemented'
+    // Call API server endpoint
+    const response = await fetch(`${API_URL}/api/epics/${epic_id}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     })
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Error getting epic:', error)
     return NextResponse.json(
       { error: 'Failed to get epic' },
+      { status: 500 }
+    )
+  }
+}
+
+// DELETE /api/epics/[epic_id] - Delete an epic
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ epic_id: string }> }
+) {
+  try {
+    const { epic_id } = await params
+
+    // Call API server endpoint
+    const response = await fetch(`${API_URL}/api/epics/${epic_id}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Error deleting epic:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete epic' },
       { status: 500 }
     )
   }

@@ -1,49 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { spawn } from 'child_process'
+
+const API_URL = 'http://127.0.0.1:8001'
 
 // GET /api/epics - List all epics
 export async function GET(request: NextRequest) {
   try {
-    // Extract organization context from headers
-    const organization = request.headers.get('X-Organization') || 'telemetryops'
-    console.log(`[API] Fetching epics for organization: ${organization}`)
-
-    // Call MCP CLI (org context will be used in future)
-    const result = await new Promise<string>((resolve, reject) => {
-      const pythonPath = '/opt/homebrew/bin/python3.13'
-      const mcpPath = '/Users/jarvisgpt/projects/agentic-flowstate-mcp'
-
-      const child = spawn(pythonPath, ['-m', 'mcp_server.cli', 'list_epics'], {
-        cwd: mcpPath,
-        env: { ...process.env, PYTHONPATH: 'src' }
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString()
-      })
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString()
-      })
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Process exited with code ${code}: ${stderr}`))
-        } else {
-          resolve(stdout)
-        }
-      })
-
-      child.on('error', (err) => {
-        reject(err)
-      })
+    // Call API server endpoint
+    const response = await fetch(`${API_URL}/api/epics`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     })
 
-    const epics = JSON.parse(result)
-    return NextResponse.json({ epics })
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Error listing epics:', error)
     return NextResponse.json(
@@ -58,44 +38,26 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
-    // Call MCP CLI with JSON arguments
-    const result = await new Promise<string>((resolve, reject) => {
-      const pythonPath = '/opt/homebrew/bin/python3.13'
-      const mcpPath = '/Users/jarvisgpt/projects/agentic-flowstate-mcp'
-
-      const args = ['-m', 'mcp_server.cli', 'create_epic', '--json', JSON.stringify(body)]
-
-      const child = spawn(pythonPath, args, {
-        cwd: mcpPath,
-        env: { ...process.env, PYTHONPATH: 'src' }
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString()
-      })
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString()
-      })
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Process exited with code ${code}: ${stderr}`))
-        } else {
-          resolve(stdout)
-        }
-      })
-
-      child.on('error', (err) => {
-        reject(err)
-      })
+    // Call API server endpoint
+    const response = await fetch(`${API_URL}/api/epics`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
     })
 
-    const epic = JSON.parse(result)
-    return NextResponse.json({ epic }, { status: 201 })
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    return NextResponse.json(data, { status: 201 })
   } catch (error) {
     console.error('Error creating epic:', error)
     return NextResponse.json(
