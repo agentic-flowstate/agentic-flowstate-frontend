@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { spawn } from 'child_process'
+
+const RUST_API_URL = 'http://127.0.0.1:8001'
 
 // GET /api/epics/[epic_id]/slices/[slice_id]/tickets/[ticket_id] - Get a single ticket
 export async function GET(
@@ -10,58 +11,25 @@ export async function GET(
     const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
 
-    // Call MCP CLI
-    const result = await new Promise<string>((resolve, reject) => {
-      const pythonPath = '/opt/homebrew/bin/python3.13'
-      const mcpPath = '/Users/jarvisgpt/projects/agentic-flowstate-mcp'
+    // Call Rust API service with nested path
+    const response = await fetch(
+      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`
+    )
 
-      const child = spawn(pythonPath, [
-        '-m', 'mcp_server.cli', 'get_ticket',
-        '--epic_id', epic_id,
-        '--slice_id', slice_id,
-        '--ticket_id', ticket_id
-      ], {
-        cwd: mcpPath,
-        env: { ...process.env, PYTHONPATH: 'src' }
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString()
-      })
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString()
-      })
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          if (stderr.includes('not found')) {
-            reject(new Error('404'))
-          } else {
-            reject(new Error(`Process exited with code ${code}: ${stderr}`))
-          }
-        } else {
-          resolve(stdout)
-        }
-      })
-
-      child.on('error', (err) => {
-        reject(err)
-      })
-    })
-
-    const ticket = JSON.parse(result)
-    return NextResponse.json(ticket)
-  } catch (error: any) {
-    if (error.message === '404') {
+    if (response.status === 404) {
       return NextResponse.json(
         { error: 'Ticket not found' },
         { status: 404 }
       )
     }
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`)
+    }
+
+    const data = await response.json()
+    return NextResponse.json(data)
+  } catch (error) {
     console.error('Error getting ticket:', error)
     return NextResponse.json(
       { error: 'Failed to get ticket' },
@@ -79,44 +47,16 @@ export async function DELETE(
     const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
 
-    // Call MCP CLI
-    await new Promise<string>((resolve, reject) => {
-      const pythonPath = '/opt/homebrew/bin/python3.13'
-      const mcpPath = '/Users/jarvisgpt/projects/agentic-flowstate-mcp'
+    // Call Rust API service with nested path
+    const response = await fetch(
+      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`,
+      { method: 'DELETE' }
+    )
 
-      const child = spawn(pythonPath, [
-        '-m', 'mcp_server.cli', 'delete_ticket',
-        '--epic_id', epic_id,
-        '--slice_id', slice_id,
-        '--ticket_id', ticket_id
-      ], {
-        cwd: mcpPath,
-        env: { ...process.env, PYTHONPATH: 'src' }
-      })
-
-      let stdout = ''
-      let stderr = ''
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString()
-      })
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString()
-      })
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Process exited with code ${code}: ${stderr}`))
-        } else {
-          resolve(stdout)
-        }
-      })
-
-      child.on('error', (err) => {
-        reject(err)
-      })
-    })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`API returned ${response.status}: ${error}`)
+    }
 
     return new NextResponse(null, { status: 204 })
   } catch (error) {

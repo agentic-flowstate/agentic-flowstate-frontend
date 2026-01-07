@@ -5,6 +5,7 @@ export type TicketPriority = "low" | "medium" | "high" | "critical"
 export interface Epic {
   epic_id: string
   title: string
+  organization: string
   notes?: string
   assignees?: string[]
   created_at_iso: string

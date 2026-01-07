@@ -1,90 +1,46 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronDown, ChevronRight, Menu } from 'lucide-react'
+import React, { useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Epic, Slice } from '@/lib/types'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useOrganization } from '@/contexts/organization-context'
-import { OrganizationSelector } from './organization-selector'
-import { EpicCreationDialog } from './epic-creation-dialog'
+import { OrganizationSelector } from '../organization-selector'
+import { SidebarProps } from './SidebarDesktop'
 
-interface SidebarProps {
-  epics: Epic[]
-  slices: Slice[]
-  selectedEpicIds: Set<string>
-  selectedSliceIds: Set<string>
-  onEpicToggle: (epicId: string) => void
-  onSliceToggle: (sliceId: string) => void
-  onEpicCreated: (epic: Epic) => void
+interface SidebarMobileProps extends SidebarProps {
+  isOpen: boolean
+  onClose: () => void
 }
 
-const SIDEBAR_WIDTH = 280
-const SIDEBAR_COLLAPSED_WIDTH = 48
-
-export function Sidebar({
+export function SidebarMobile({
   epics,
   slices,
   selectedEpicIds,
   selectedSliceIds,
   onEpicToggle,
   onSliceToggle,
-  onEpicCreated
-}: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  isOpen,
+  onClose
+}: SidebarMobileProps) {
   const [isEpicsOpen, setIsEpicsOpen] = useState(true)
   const [isSlicesOpen, setIsSlicesOpen] = useState(true)
   const { organizations, selectedOrg, selectOrg } = useOrganization()
-
-  // Load collapsed state from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem('sidebar-collapsed')
-    if (stored === 'true') {
-      setIsCollapsed(true)
-    }
-  }, [])
-
-  const toggleCollapsed = () => {
-    const newState = !isCollapsed
-    setIsCollapsed(newState)
-    localStorage.setItem('sidebar-collapsed', String(newState))
-  }
 
   // Get slices for selected epics
   const visibleSlices = slices.filter(slice => selectedEpicIds.has(slice.epic_id))
 
   return (
-    <div
-      className={cn(
-        "relative h-full bg-background border-r transition-all duration-200 flex-shrink-0",
-        "flex flex-col mt-12",
-        "hidden md:flex"
-      )}
-      style={{ width: isCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH }}
-    >
-      {/* Collapse Toggle */}
-      <div className="h-10 flex items-center justify-between px-3 border-b">
-        {!isCollapsed && (
-          <span className="text-xs font-medium text-muted-foreground">Navigation</span>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6"
-          onClick={toggleCollapsed}
-        >
-          {isCollapsed ? (
-            <Menu className="h-3 w-3" />
-          ) : (
-            <ChevronLeft className="h-3 w-3" />
-          )}
-        </Button>
-      </div>
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent side="left" className="w-[300px] p-0 pt-0">
+        <SheetHeader className="p-4 border-b">
+          <SheetTitle className="text-sm font-medium">Navigation</SheetTitle>
+        </SheetHeader>
 
-      {!isCollapsed && (
-        <>
+        <div className="flex flex-col h-[calc(100%-57px)]">
           {/* Organization Section */}
           <div className="p-3 border-b">
             <div className="text-xs font-medium text-muted-foreground mb-2">Organization</div>
@@ -112,7 +68,6 @@ export function Sidebar({
                         Epics ({epics.length})
                       </span>
                     </div>
-                    <EpicCreationDialog onEpicCreated={onEpicCreated} />
                   </div>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
@@ -130,16 +85,15 @@ export function Sidebar({
                           <div
                             key={epic.epic_id}
                             className={cn(
-                              "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
-                              "hover:bg-accent/50",
-                              isSelected && "bg-accent"
+                              "flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer transition-colors",
+                              "hover:bg-accent/50 active:bg-accent"
                             )}
                             onClick={() => onEpicToggle(epic.epic_id)}
                           >
                             <Checkbox
                               checked={isSelected}
                               onCheckedChange={() => onEpicToggle(epic.epic_id)}
-                              className="h-3.5 w-3.5"
+                              className="h-4 w-4"
                               onClick={(e) => e.stopPropagation()}
                             />
                             <div className="flex-1 min-w-0">
@@ -148,7 +102,7 @@ export function Sidebar({
                                   "w-1.5 h-1.5 rounded-full flex-shrink-0",
                                   isSelected ? "bg-primary" : "bg-muted-foreground"
                                 )} />
-                                <span className="text-xs font-mono truncate">
+                                <span className="text-sm font-mono truncate">
                                   {epic.epic_id}
                                 </span>
                               </div>
@@ -206,16 +160,15 @@ export function Sidebar({
                             <div
                               key={slice.slice_id}
                               className={cn(
-                                "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors",
-                                "hover:bg-accent/50",
-                                isSelected && "bg-accent"
+                                "flex items-center gap-2 px-2 py-2 rounded-md cursor-pointer transition-colors",
+                                "hover:bg-accent/50 active:bg-accent"
                               )}
                               onClick={() => onSliceToggle(slice.slice_id)}
                             >
                               <Checkbox
                                 checked={isSelected}
                                 onCheckedChange={() => onSliceToggle(slice.slice_id)}
-                                className="h-3.5 w-3.5"
+                                className="h-4 w-4"
                                 onClick={(e) => e.stopPropagation()}
                               />
                               <div className="flex-1 min-w-0">
@@ -224,7 +177,7 @@ export function Sidebar({
                                     "w-1.5 h-1.5 rounded-full flex-shrink-0",
                                     isSelected ? "bg-green-500" : "bg-muted-foreground"
                                   )} />
-                                  <span className="text-xs font-mono truncate">
+                                  <span className="text-sm font-mono truncate">
                                     {slice.slice_id}
                                   </span>
                                 </div>
@@ -262,8 +215,8 @@ export function Sidebar({
               </div>
             </div>
           )}
-        </>
-      )}
-    </div>
+        </div>
+      </SheetContent>
+    </Sheet>
   )
 }

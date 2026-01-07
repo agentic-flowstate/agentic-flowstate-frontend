@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const API_URL = 'http://127.0.0.1:8001'
 
-// GET /api/epics - List all epics
+// GET /api/epics - List all epics (filtered by organization)
 export async function GET(request: NextRequest) {
   try {
-    // Call API server endpoint
-    const response = await fetch(`${API_URL}/api/epics`, {
+    // Get organization from header
+    const organization = request.headers.get('X-Organization')
+
+    // Build URL with organization filter if provided
+    const url = organization
+      ? `${API_URL}/api/epics?organization=${encodeURIComponent(organization)}`
+      : `${API_URL}/api/epics`
+
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json'
@@ -38,13 +45,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
 
+    // Get organization from header and include in body
+    const organization = request.headers.get('X-Organization')
+    const epicData = {
+      ...body,
+      organization: body.organization || organization || 'telemetryops'
+    }
+
     // Call API server endpoint
     const response = await fetch(`${API_URL}/api/epics`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(epicData)
     })
 
     if (!response.ok) {

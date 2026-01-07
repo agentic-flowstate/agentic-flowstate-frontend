@@ -1,11 +1,11 @@
 "use client"
 
-import React from 'react'
+import React, { useRef } from 'react'
 import { Ticket } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { AlertCircle, CheckCircle, Clock, Circle } from 'lucide-react'
+import { AlertCircle, CheckCircle, Clock, Circle, ChevronLeft, ChevronRight } from 'lucide-react'
 
-interface TicketBoardProps {
+export interface TicketBoardProps {
   tickets: Ticket[]
   focusedTicket: string | null
   onTicketClick: (ticket: Ticket) => void
@@ -19,7 +19,65 @@ const STATUS_LANES = [
   { status: 'completed', label: 'COMPLETED', icon: CheckCircle, color: 'text-green-500' },
 ] as const
 
-export function TicketBoard({ tickets, focusedTicket, onTicketClick }: TicketBoardProps) {
+// Scrollable lane component with navigation arrows
+function ScrollableLane({
+  children,
+  hasTickets
+}: {
+  children: React.ReactNode
+  hasTickets: boolean
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (!scrollRef.current) return
+    const scrollAmount = 200
+    scrollRef.current.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth'
+    })
+  }
+
+  if (!hasTickets) {
+    return (
+      <div className="flex-1 p-4 flex items-center">
+        <div className="text-xs text-muted-foreground italic">No tickets</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex-1 min-w-0 relative group h-full">
+      {/* Left scroll button */}
+      <button
+        onClick={() => scroll('left')}
+        className="absolute left-0 z-10 h-full px-1 bg-gradient-to-r from-background/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Scroll left"
+      >
+        <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+      </button>
+
+      {/* Scrollable ticket area - full height of lane */}
+      <div
+        ref={scrollRef}
+        className="h-full w-full p-4 flex items-center gap-3 overflow-x-auto scrollbar-thin"
+      >
+        {children}
+      </div>
+
+      {/* Right scroll button */}
+      <button
+        onClick={() => scroll('right')}
+        className="absolute right-0 z-10 h-full px-1 bg-gradient-to-l from-background/90 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+        aria-label="Scroll right"
+      >
+        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      </button>
+    </div>
+  )
+}
+
+export function TicketBoardDesktop({ tickets, focusedTicket, onTicketClick }: TicketBoardProps) {
   // Group tickets by status
   const ticketsByStatus = tickets.reduce((acc, ticket) => {
     const status = ticket.status || 'open'
@@ -32,7 +90,7 @@ export function TicketBoard({ tickets, focusedTicket, onTicketClick }: TicketBoa
 
   return (
     <div className="h-full flex flex-col">
-      {/* Lane grid */}
+      {/* Lane grid - always render the structure for stable layout */}
       <div className="flex-1 grid grid-rows-4 gap-0 border border-border rounded-lg overflow-hidden">
         {STATUS_LANES.map((lane, index) => {
           const laneTickets = ticketsByStatus[lane.status] || []
@@ -42,12 +100,12 @@ export function TicketBoard({ tickets, focusedTicket, onTicketClick }: TicketBoa
             <div
               key={lane.status}
               className={cn(
-                "flex border-border",
+                "flex min-w-0 border-border",
                 index < STATUS_LANES.length - 1 && "border-b"
               )}
             >
-              {/* Lane header */}
-              <div className="w-32 bg-muted/30 border-r border-border p-4 flex items-center">
+              {/* Lane header - sticky */}
+              <div className="w-32 bg-muted/30 border-r border-border p-4 flex items-center flex-shrink-0">
                 <div className="flex items-center gap-2">
                   <Icon className={cn("h-4 w-4", lane.color)} />
                   <span className="text-xs font-medium text-muted-foreground">{lane.label}</span>
@@ -57,12 +115,9 @@ export function TicketBoard({ tickets, focusedTicket, onTicketClick }: TicketBoa
                 </div>
               </div>
 
-              {/* Lane tickets */}
-              <div className="flex-1 p-4 flex gap-3 overflow-x-auto">
-                {laneTickets.length === 0 ? (
-                  <div className="text-xs text-muted-foreground italic">No tickets</div>
-                ) : (
-                  laneTickets.map((ticket) => (
+              {/* Lane tickets with scroll controls */}
+              <ScrollableLane hasTickets={laneTickets.length > 0}>
+                {laneTickets.map((ticket) => (
                     <button
                       key={ticket.ticket_id}
                       onClick={() => onTicketClick(ticket)}
@@ -125,9 +180,8 @@ export function TicketBoard({ tickets, focusedTicket, onTicketClick }: TicketBoa
                         </div>
                       </div>
                     </button>
-                  ))
-                )}
-              </div>
+                  ))}
+              </ScrollableLane>
             </div>
           )
         })}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { spawn } from 'child_process'
+
+const RUST_API_URL = 'http://127.0.0.1:8001'
 
 // PATCH /api/epics/[epic_id]/slices/[slice_id]/tickets/[ticket_id]/status - Update ticket status
 export async function PATCH(
@@ -18,48 +19,23 @@ export async function PATCH(
       )
     }
 
-    // Call MCP CLI
-    const result = await new Promise<string>((resolve, reject) => {
-      const pythonPath = '/opt/homebrew/bin/python3.13'
-      const mcpPath = '/Users/jarvisgpt/projects/agentic-flowstate-mcp'
+    // Call Rust API service with nested path
+    const response = await fetch(
+      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: body.status })
+      }
+    )
 
-      const child = spawn(pythonPath, [
-        '-m', 'mcp_server.cli', 'update_ticket_status',
-        '--epic_id', epic_id,
-        '--slice_id', slice_id,
-        '--ticket_id', ticket_id,
-        '--new_status', body.status
-      ], {
-        cwd: mcpPath,
-        env: { ...process.env, PYTHONPATH: 'src' }
-      })
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`API returned ${response.status}: ${error}`)
+    }
 
-      let stdout = ''
-      let stderr = ''
-
-      child.stdout.on('data', (data) => {
-        stdout += data.toString()
-      })
-
-      child.stderr.on('data', (data) => {
-        stderr += data.toString()
-      })
-
-      child.on('close', (code) => {
-        if (code !== 0) {
-          reject(new Error(`Process exited with code ${code}: ${stderr}`))
-        } else {
-          resolve(stdout)
-        }
-      })
-
-      child.on('error', (err) => {
-        reject(err)
-      })
-    })
-
-    const ticket = JSON.parse(result)
-    return NextResponse.json(ticket)
+    const data = await response.json()
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Error updating ticket status:', error)
     return NextResponse.json(

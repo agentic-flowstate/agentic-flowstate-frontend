@@ -1,53 +1,128 @@
 "use client"
 
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { Menu } from 'lucide-react'
 import { Sidebar } from '@/components/sidebar'
 import { TicketBoard } from '@/components/ticket-board'
-import { TicketDrawer } from '@/components/ticket-drawer'
+import { TicketDetail } from '@/components/ticket-detail'
 import { AssigneeFilter } from '@/components/assignee-filter'
+import { Button } from '@/components/ui/button'
 import { getEpics, getSlices, getTickets } from '@/lib/api/tickets'
 import { Epic, Slice, Ticket } from '@/lib/types'
 import { useOrganization } from '@/contexts/organization-context'
+import { useIsMobile } from '@/lib/hooks'
 
+// Helper to parse comma-separated URL params into a Set
+function parseSetParam(param: string | null): Set<string> {
+  if (!param) return new Set()
+  return new Set(param.split(',').filter(Boolean))
+}
+
+// Helper to serialize a Set to comma-separated string
+function serializeSet(set: Set<string>): string {
+  return Array.from(set).join(',')
+}
+
+// Wrapper component to handle Suspense for useSearchParams
 export default function WorkspacePage() {
+  return (
+    <Suspense fallback={<WorkspaceLoading />}>
+      <WorkspaceContent />
+    </Suspense>
+  )
+}
+
+function WorkspaceLoading() {
+  return (
+    <div className="h-screen bg-background flex items-center justify-center">
+      <div className="text-muted-foreground text-sm">Loading workspace...</div>
+    </div>
+  )
+}
+
+function WorkspaceContent() {
   const { selectedOrg } = useOrganization()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const isInitialized = useRef(false)
+  const isMobile = useIsMobile()
 
   // Data state
   const [epics, setEpics] = useState<Epic[]>([])
   const [slicesByEpic, setSlicesByEpic] = useState<Record<string, Slice[]>>({})
   const [ticketsBySlice, setTicketsBySlice] = useState<Record<string, Ticket[]>>({})
 
-  // Multi-selection state using Sets
-  const [selectedEpicIds, setSelectedEpicIds] = useState<Set<string>>(new Set())
-  const [selectedSliceIds, setSelectedSliceIds] = useState<Set<string>>(new Set())
+  // Multi-selection state using Sets - initialize from URL
+  const [selectedEpicIds, setSelectedEpicIds] = useState<Set<string>>(() =>
+    parseSetParam(searchParams.get('epics'))
+  )
+  const [selectedSliceIds, setSelectedSliceIds] = useState<Set<string>>(() =>
+    parseSetParam(searchParams.get('slices'))
+  )
 
-  // UI state
-  const [focusedTicket, setFocusedTicket] = useState<string | null>(null)
+  // UI state - initialize from URL
+  const [focusedTicket, setFocusedTicket] = useState<string | null>(
+    searchParams.get('ticket')
+  )
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
-  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(null)
+  const [selectedAssignee, setSelectedAssignee] = useState<string | null>(
+    searchParams.get('assignee')
+  )
+
+  // Mobile sidebar state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
 
   // Loading state
   const [isLoadingEpics, setIsLoadingEpics] = useState(false)
   const [isLoadingSlices, setIsLoadingSlices] = useState(false)
   const [isLoadingTickets, setIsLoadingTickets] = useState(false)
 
+  // Sync state to URL (debounced to avoid excessive updates)
+  useEffect(() => {
+    // Skip initial render to avoid overwriting URL params before data loads
+    if (!isInitialized.current) return
+
+    const params = new URLSearchParams()
+
+    if (selectedEpicIds.size > 0) {
+      params.set('epics', serializeSet(selectedEpicIds))
+    }
+    if (selectedSliceIds.size > 0) {
+      params.set('slices', serializeSet(selectedSliceIds))
+    }
+    if (focusedTicket) {
+      params.set('ticket', focusedTicket)
+    }
+    if (selectedAssignee) {
+      params.set('assignee', selectedAssignee)
+    }
+
+    const newUrl = params.toString() ? `?${params.toString()}` : '/workspace'
+    router.replace(newUrl, { scroll: false })
+  }, [selectedEpicIds, selectedSliceIds, focusedTicket, selectedAssignee, router])
+
   // Load epics when organization changes
   useEffect(() => {
     async function loadEpics() {
       if (!selectedOrg) return
 
-      // Reset selections when org changes
-      setSelectedEpicIds(new Set())
-      setSelectedSliceIds(new Set())
-      setSlicesByEpic({})
-      setTicketsBySlice({})
-      setFocusedTicket(null)
-      setSelectedTicket(null)
+      // Only reset selections if this isn't the initial load with URL params
+      if (isInitialized.current) {
+        setSelectedEpicIds(new Set())
+        setSelectedSliceIds(new Set())
+        setSlicesByEpic({})
+        setTicketsBySlice({})
+        setFocusedTicket(null)
+        setSelectedTicket(null)
+      }
 
       try {
         setIsLoadingEpics(true)
         const epicsList = await getEpics()
         setEpics(epicsList)
+        // Mark as initialized after first load
+        isInitialized.current = true
       } catch (error) {
         console.error('Failed to load epics:', error)
       } finally {
@@ -191,12 +266,6 @@ export default function WorkspacePage() {
     setFocusedTicket(null)
   }
 
-  const handleEpicCreated = (newEpic: Epic) => {
-    setEpics(prev => [...prev, newEpic])
-    // Optionally auto-select the new epic
-    setSelectedEpicIds(prev => new Set(prev).add(newEpic.epic_id))
-  }
-
   // Flatten all slices for sidebar
   const allSlices = useMemo(() => {
     return Object.values(slicesByEpic).flat()
@@ -255,16 +324,30 @@ export default function WorkspacePage() {
         selectedSliceIds={selectedSliceIds}
         onEpicToggle={handleEpicToggle}
         onSliceToggle={handleSliceToggle}
-        onEpicCreated={handleEpicCreated}
+        isMobileSidebarOpen={isMobileSidebarOpen}
+        onMobileSidebarClose={() => setIsMobileSidebarOpen(false)}
       />
 
       {/* Main workspace area */}
       <div className="flex-1 flex flex-col mt-12 min-w-0">
         {/* Top bar with filters */}
         <div className="h-10 bg-background border-b flex items-center justify-between px-4 flex-shrink-0">
-          <div className="text-xs text-muted-foreground">
-            {selectedEpicIds.size} epic{selectedEpicIds.size !== 1 ? 's' : ''} · {selectedSliceIds.size} slice{selectedSliceIds.size !== 1 ? 's' : ''} · {filteredTickets.length} ticket{filteredTickets.length !== 1 ? 's' : ''}
-            {selectedAssignee && ` for ${selectedAssignee}`}
+          <div className="flex items-center gap-2">
+            {/* Mobile hamburger menu */}
+            {isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 md:hidden"
+                onClick={() => setIsMobileSidebarOpen(true)}
+              >
+                <Menu className="h-4 w-4" />
+              </Button>
+            )}
+            <div className="text-xs text-muted-foreground">
+              {selectedEpicIds.size} epic{selectedEpicIds.size !== 1 ? 's' : ''} · {selectedSliceIds.size} slice{selectedSliceIds.size !== 1 ? 's' : ''} · {filteredTickets.length} ticket{filteredTickets.length !== 1 ? 's' : ''}
+              {selectedAssignee && ` for ${selectedAssignee}`}
+            </div>
           </div>
           <AssigneeFilter
             availableAssignees={availableAssignees}
@@ -284,7 +367,10 @@ export default function WorkspacePage() {
                 </div>
                 <h2 className="text-xl font-semibold text-muted-foreground">No Epics Selected</h2>
                 <p className="text-sm text-muted-foreground">
-                  Select one or more epics from the sidebar to view their slices and tickets
+                  {isMobile
+                    ? "Tap the menu icon to select epics and slices"
+                    : "Select one or more epics from the sidebar to view their slices and tickets"
+                  }
                 </p>
                 {isLoadingEpics && (
                   <div className="text-xs text-muted-foreground font-mono mt-4">Loading epics...</div>
@@ -293,72 +379,11 @@ export default function WorkspacePage() {
             </div>
           )}
 
-          {/* State B: Epic(s) selected but no slice selected */}
-          {selectedEpicIds.size > 0 && selectedSliceIds.size === 0 && (
-            <div className="h-full p-8">
-              {/* Selected epics summary */}
-              <div className="mb-8">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary/60" />
-                  <span className="text-xs font-mono text-muted-foreground">
-                    {selectedEpics.length} EPIC{selectedEpics.length !== 1 ? 'S' : ''} SELECTED
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedEpics.map(epic => (
-                    <span key={epic.epic_id} className="text-sm px-2 py-1 bg-primary/10 text-primary rounded">
-                      {epic.title}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Slice grid */}
-              <div>
-                <h2 className="text-sm font-medium text-muted-foreground mb-4">
-                  {isLoadingSlices ? 'Loading slices...' : `Select slices to view tickets (${allSlices.length} available)`}
-                </h2>
-                {allSlices.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {allSlices.map((slice) => (
-                      <button
-                        key={slice.slice_id}
-                        onClick={() => handleSliceToggle(slice.slice_id)}
-                        className="p-4 bg-card/50 border border-border/50 rounded-lg hover:bg-card hover:border-border transition-colors text-left"
-                      >
-                        <div className="font-medium text-card-foreground mb-1">{slice.title}</div>
-                        <div className="text-[10px] text-muted-foreground mb-1">{slice.epic_id}</div>
-                        {slice.assignees && slice.assignees.length > 0 && (
-                          <div className="flex gap-1 mb-1">
-                            {slice.assignees.map((assignee) => (
-                              <span key={assignee} className="text-xs px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded">
-                                {assignee}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {slice.notes && (
-                          <div className="text-xs text-muted-foreground line-clamp-2">{slice.notes}</div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  !isLoadingSlices && (
-                    <div className="text-sm text-muted-foreground">
-                      No slices available in selected epics
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* State C: Slices selected (working state) */}
-          {selectedSliceIds.size > 0 && (
+          {/* State B/C: Epic(s) selected - unified layout with persistent ticket board */}
+          {selectedEpicIds.size > 0 && (
             <div className="h-full flex flex-col">
-              {/* Context bar */}
-              <div className="h-10 bg-muted/50 border-b border-border/30 flex items-center px-4">
+              {/* Context bar - always present when epics selected */}
+              <div className="h-10 bg-muted/50 border-b border-border/30 flex items-center px-4 flex-shrink-0">
                 <div className="flex items-center gap-4 text-xs">
                   <div className="flex items-center gap-2">
                     <div className="w-1 h-1 rounded-full bg-primary/60" />
@@ -374,30 +399,26 @@ export default function WorkspacePage() {
                     </span>
                   </div>
                   <div className="ml-auto text-muted-foreground">
-                    {isLoadingTickets ? 'Loading tickets...' : `${filteredTickets.length} tickets`}
+                    {isLoadingSlices ? 'Loading slices...' : isLoadingTickets ? 'Loading tickets...' : `${filteredTickets.length} tickets`}
                   </div>
                 </div>
               </div>
 
-              {/* Ticket board */}
-              <div className="flex-1 p-6">
-                {isLoadingTickets ? (
-                  <div className="text-center text-muted-foreground text-sm">Loading tickets...</div>
-                ) : (
-                  <TicketBoard
-                    tickets={filteredTickets}
-                    focusedTicket={focusedTicket}
-                    onTicketClick={handleTicketClick}
-                  />
-                )}
+              {/* Ticket board - always rendered, shows empty state when no slices selected */}
+              <div className="flex-1 p-2 md:p-6 min-h-0">
+                <TicketBoard
+                  tickets={filteredTickets}
+                  focusedTicket={focusedTicket}
+                  onTicketClick={handleTicketClick}
+                />
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Ticket Drawer */}
-      <TicketDrawer
+      {/* Ticket Detail (Drawer on desktop, Full-screen on mobile) */}
+      <TicketDetail
         ticket={selectedTicket}
         isOpen={!!selectedTicket}
         onClose={handleCloseDrawer}
