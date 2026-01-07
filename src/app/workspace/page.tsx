@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { getEpics, getSlices, getTickets } from '@/lib/api/tickets'
 import { Epic, Slice, Ticket } from '@/lib/types'
 import { useOrganization } from '@/contexts/organization-context'
+import { useAgentState } from '@/contexts/agent-state-context'
 import { useIsMobile } from '@/lib/hooks'
 
 // Helper to parse comma-separated URL params into a Set
@@ -43,6 +44,7 @@ function WorkspaceLoading() {
 
 function WorkspaceContent() {
   const { selectedOrg } = useOrganization()
+  const { refreshRunningAgents } = useAgentState()
   const router = useRouter()
   const searchParams = useSearchParams()
   const isInitialized = useRef(false)
@@ -229,6 +231,22 @@ function WorkspaceContent() {
 
     loadTicketsForSlices()
   }, [selectedSliceIds, slicesByEpic])
+
+  // Check for running agents when tickets are loaded
+  // This ensures the RGB border shows on page reload
+  useEffect(() => {
+    const allTickets = Object.values(ticketsBySlice).flat()
+    if (allTickets.length === 0) return
+
+    // Check all loaded tickets for running agents
+    refreshRunningAgents(
+      allTickets.map(t => ({
+        epicId: t.epic_id,
+        sliceId: t.slice_id,
+        ticketId: t.ticket_id,
+      }))
+    )
+  }, [ticketsBySlice, refreshRunningAgents])
 
   // Toggle epic selection
   const handleEpicToggle = useCallback((epicId: string) => {
