@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { OrganizationProvider } from '@/contexts/organization-context'
+import { AgentStateProvider } from '@/contexts/agent-state-context'
 import { AppShell } from '@/components/app-shell'
 
 export const metadata: Metadata = {
@@ -52,9 +53,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <OrganizationProvider>
-            <AppShell>
-              {children}
-            </AppShell>
+            <AgentStateProvider>
+              <AppShell>
+                {children}
+              </AppShell>
+            </AgentStateProvider>
           </OrganizationProvider>
         </ThemeProvider>
       </body>

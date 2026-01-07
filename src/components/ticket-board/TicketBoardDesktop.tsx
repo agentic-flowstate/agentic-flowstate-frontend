@@ -4,6 +4,7 @@ import React, { useRef } from 'react'
 import { Ticket } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { AlertCircle, CheckCircle, Clock, Circle, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useAgentState } from '@/contexts/agent-state-context'
 
 export interface TicketBoardProps {
   tickets: Ticket[]
@@ -78,6 +79,8 @@ function ScrollableLane({
 }
 
 export function TicketBoardDesktop({ tickets, focusedTicket, onTicketClick }: TicketBoardProps) {
+  const { isAgentRunning } = useAgentState()
+
   // Group tickets by status
   const ticketsByStatus = tickets.reduce((acc, ticket) => {
     const status = ticket.status || 'open'
@@ -117,20 +120,27 @@ export function TicketBoardDesktop({ tickets, focusedTicket, onTicketClick }: Ti
 
               {/* Lane tickets with scroll controls */}
               <ScrollableLane hasTickets={laneTickets.length > 0}>
-                {laneTickets.map((ticket) => (
+                {laneTickets.map((ticket) => {
+                  const isProcessing = isAgentRunning(ticket.ticket_id)
+                  return (
                     <button
                       key={ticket.ticket_id}
                       onClick={() => onTicketClick(ticket)}
                       className={cn(
                         "flex-shrink-0 w-48 p-3 bg-card/50 border rounded-md transition-all",
                         "hover:bg-card hover:border-border",
-                        focusedTicket === ticket.ticket_id
+                        // Animated RGB border when agent is processing
+                        isProcessing && "rgb-processing-border",
+                        // Normal styling when not processing
+                        !isProcessing && focusedTicket === ticket.ticket_id
                           ? "border-primary/50 ring-1 ring-primary/20"
-                          : "border-border",
-                        // Show cross-slice relationships with yellow border
-                        (ticket.blocks_tickets && ticket.blocks_tickets.length > 0) ||
-                        (ticket.blocked_by_tickets && ticket.blocked_by_tickets.length > 0) ||
-                        (ticket.caused_by_tickets && ticket.caused_by_tickets.length > 0)
+                          : !isProcessing ? "border-border" : "",
+                        // Show cross-slice relationships with yellow border (only when not processing)
+                        !isProcessing && (
+                          (ticket.blocks_tickets && ticket.blocks_tickets.length > 0) ||
+                          (ticket.blocked_by_tickets && ticket.blocked_by_tickets.length > 0) ||
+                          (ticket.caused_by_tickets && ticket.caused_by_tickets.length > 0)
+                        )
                           ? "border-yellow-600/30"
                           : ""
                       )}
@@ -180,7 +190,8 @@ export function TicketBoardDesktop({ tickets, focusedTicket, onTicketClick }: Ti
                         </div>
                       </div>
                     </button>
-                  ))}
+                  )
+                })}
               </ScrollableLane>
             </div>
           )

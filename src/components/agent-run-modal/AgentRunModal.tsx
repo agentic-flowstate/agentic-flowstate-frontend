@@ -125,12 +125,13 @@ export function AgentRunModal({
 
   // Only auto-start when explicitly requested via autoStart prop
   // This prevents re-runs during hot reload or when reopening modal
+  // IMPORTANT: Don't start if we have a reconnectSessionId - that means we're reconnecting, not starting fresh
   useEffect(() => {
-    if (isOpen && autoStart && ticket && agentType && !isRunning && !hasStartedRef.current) {
+    if (isOpen && autoStart && ticket && agentType && !isRunning && !hasStartedRef.current && !reconnectSessionId) {
       hasStartedRef.current = true
       startAgent()
     }
-  }, [isOpen, autoStart, ticket, agentType])
+  }, [isOpen, autoStart, ticket, agentType, reconnectSessionId])
 
   // Handle reconnection when reconnectSessionId is provided
   useEffect(() => {
@@ -200,9 +201,63 @@ export function AgentRunModal({
             })
             break
 
+          case 'tool_use':
+            const toolCall: ToolCall = {
+              id: event.id,
+              name: event.name,
+              input: event.input,
+              isExpanded: false,
+              status: 'completed', // Mark as completed since we're replaying
+            }
+            setMessages(prev => {
+              const filtered = prev.filter(b => b.status !== 'reconnecting')
+              const last = filtered[filtered.length - 1]
+              if (last?.type === 'tool_calls') {
+                return [
+                  ...filtered.slice(0, -1),
+                  { ...last, toolCalls: [...(last.toolCalls || []), toolCall], toolsCollapsed: true }
+                ]
+              }
+              return [...filtered, { type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true }]
+            })
+            break
+
+          case 'tool_result':
+            const resultEvent = event as ToolResultEvent
+            setMessages(prev => {
+              return prev.map(block => {
+                if (block.type === 'tool_calls' && block.toolCalls) {
+                  return {
+                    ...block,
+                    toolCalls: block.toolCalls.map(tc =>
+                      tc.id === resultEvent.tool_use_id
+                        ? {
+                            ...tc,
+                            result: resultEvent.content || '(empty response)',
+                            isError: resultEvent.is_error,
+                            status: resultEvent.is_error ? 'error' as const : 'completed' as const
+                          }
+                        : tc
+                    )
+                  }
+                }
+                return block
+              })
+            })
+            break
+
+          case 'thinking':
+            setMessages(prev => {
+              const filtered = prev.filter(b => b.status !== 'reconnecting')
+              return [...filtered, { type: 'thinking', content: event.content }]
+            })
+            break
+
           case 'status':
             setCurrentStatus(event.status)
-            if (event.message && event.status !== 'reconnecting') {
+            // Only show status messages for non-running states (and not reconnecting)
+            // Running state is indicated by the header loader, not a message
+            if (event.message && event.status !== 'reconnecting' && event.status !== 'running') {
               setMessages(prev => [...prev, { type: 'status', status: event.status, message: event.message }])
             }
             break
@@ -220,15 +275,10 @@ export function AgentRunModal({
       () => {
         setIsReconnecting(false)
         if (currentStatus === 'running') {
-          // Agent is still running - we just got the status
-          setMessages(prev => {
-            const filtered = prev.filter(b => b.status !== 'reconnecting')
-            return [...filtered, {
-              type: 'status',
-              status: 'running',
-              message: 'Agent is still running. Close and reopen later to see results.'
-            }]
-          })
+          // Agent is still running - show loader in the content area
+          // The header already shows "Running..." so no need for a separate message
+          // Just clear the reconnecting status and let the running state speak for itself
+          setMessages(prev => prev.filter(b => b.status !== 'reconnecting'))
         } else if (!hasCompletedRef.current) {
           hasCompletedRef.current = true
           setCurrentStatus('completed')
@@ -503,17 +553,10 @@ export function AgentRunModal({
 
         {/* Content */}
         <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 && isRunning && (
+          {messages.length === 0 && (isRunning || isReconnecting || currentStatus === 'running') && (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              Waiting for agent output...
-            </div>
-          )}
-
-          {messages.length === 0 && isReconnecting && (
-            <div className="flex items-center justify-center h-32 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              Fetching stored output...
+              {isReconnecting ? 'Loading agent output...' : 'Waiting for agent output...'}
             </div>
           )}
 

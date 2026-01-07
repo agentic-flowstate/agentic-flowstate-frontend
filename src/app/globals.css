@@ -130,3 +130,49 @@
 .scrollbar-thin:hover::-webkit-scrollbar-thumb {
   background-color: var(--muted-foreground);
 }
+
+/* Animated RGB border for processing tickets */
+@keyframes rgb-border-spin {
+  0% {
+    --border-angle: 0deg;
+  }
+  100% {
+    --border-angle: 360deg;
+  }
+}
+
+@property --border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.rgb-processing-border {
+  position: relative;
+  background: var(--card);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.rgb-processing-border::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--radius) + 2px);
+  padding: 2px;
+  background: conic-gradient(
+    from var(--border-angle),
+    #ff0080,
+    #7928ca,
+    #0070f3,
+    #00dfd8,
+    #7928ca,
+    #ff0080
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rgb-border-spin 3s linear infinite;
+  pointer-events: none;
+}

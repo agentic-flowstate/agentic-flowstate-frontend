@@ -1,20 +1,20 @@
 "use client"
 
-import React, { useState, useEffect, useCallback } from 'react'
-import { X, Link2, FileText, Save, Bot, Play, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { X, Link2, FileText, Save, Bot, Play, ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react'
 import { Ticket } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { updateTicketNotes } from '@/lib/api/tickets'
 import {
   getAgentRuns,
-  getActiveAgentRun,
   getAgentTypeInfo,
   getStatusInfo,
   type AgentType,
   type AgentRun,
 } from '@/lib/api/agents'
 import { AgentRunModal } from '@/components/agent-run-modal'
+import { useAgentState } from '@/contexts/agent-state-context'
 
 export interface TicketDetailProps {
   ticket: Ticket | null
@@ -27,60 +27,109 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
   const [isEditingNotes, setIsEditingNotes] = useState(false)
   const [isSavingNotes, setIsSavingNotes] = useState(false)
 
-  // Agent state
+  // Agent state from global context
+  const {
+    isAgentRunning: isGlobalAgentRunning,
+    getRunningAgent,
+    markAgentStarted,
+    markAgentCompleted,
+    checkForActiveAgent,
+  } = useAgentState()
+
+  // Local agent state
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([])
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
+  const [isCheckingActiveAgent, setIsCheckingActiveAgent] = useState(false)
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
 
   // Modal state - persists even when modal is closed
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [modalAgentType, setModalAgentType] = useState<AgentType | null>(null)
   const [modalPreviousSessionId, setModalPreviousSessionId] = useState<string | undefined>(undefined)
-  const [isAgentRunning, setIsAgentRunning] = useState(false)
   const [shouldAutoStart, setShouldAutoStart] = useState(false)
   const [reconnectSessionId, setReconnectSessionId] = useState<string | undefined>(undefined)
 
-  // Load agent runs when ticket changes
-  const loadAgentRuns = useCallback(async () => {
+  // Derive running state from global context
+  const isAgentRunning = ticket ? isGlobalAgentRunning(ticket.ticket_id) : false
+  const runningAgentInfo = ticket ? getRunningAgent(ticket.ticket_id) : undefined
+
+  // Track which agent types have completed runs
+  const completedAgentTypes = useMemo(() => {
+    const completed = new Set<AgentType>()
+    agentRuns.forEach(run => {
+      if (run.status === 'completed') {
+        completed.add(run.agent_type)
+      }
+    })
+    return completed
+  }, [agentRuns])
+
+  // Load agent runs when ticket changes - use ticket_id as stable dependency
+  useEffect(() => {
     if (!ticket) return
 
-    setIsLoadingRuns(true)
+    let cancelled = false
+
+    const loadRuns = async () => {
+      setIsLoadingRuns(true)
+      try {
+        const runs = await getAgentRuns(ticket.epic_id, ticket.slice_id, ticket.ticket_id)
+        if (!cancelled) {
+          setAgentRuns(runs)
+        }
+      } catch (error) {
+        console.error('Failed to load agent runs:', error)
+      } finally {
+        if (!cancelled) {
+          setIsLoadingRuns(false)
+        }
+      }
+    }
+
+    const checkActiveAgent = async () => {
+      setIsCheckingActiveAgent(true)
+      try {
+        const activeInfo = await checkForActiveAgent(ticket.epic_id, ticket.slice_id, ticket.ticket_id)
+        if (!cancelled && activeInfo) {
+          setModalAgentType(activeInfo.agentType)
+          setReconnectSessionId(activeInfo.sessionId)
+          setShouldAutoStart(false)
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingActiveAgent(false)
+        }
+      }
+    }
+
+    setNotes(ticket.notes || '')
+    setIsEditingNotes(false)
+    loadRuns()
+    checkActiveAgent()
+
+    return () => {
+      cancelled = true
+    }
+  }, [ticket?.ticket_id]) // Only re-run when ticket ID changes, not on every ticket object change
+
+  // Function to reload agent runs (for after completion)
+  const reloadAgentRuns = useCallback(async () => {
+    if (!ticket) return
     try {
       const runs = await getAgentRuns(ticket.epic_id, ticket.slice_id, ticket.ticket_id)
       setAgentRuns(runs)
     } catch (error) {
-      console.error('Failed to load agent runs:', error)
-    } finally {
-      setIsLoadingRuns(false)
+      console.error('Failed to reload agent runs:', error)
     }
-  }, [ticket])
+  }, [ticket?.epic_id, ticket?.slice_id, ticket?.ticket_id])
 
-  // Check for active agent runs on mount (for reconnection after page refresh)
-  const checkActiveAgentRun = useCallback(async () => {
-    if (!ticket) return
-
-    try {
-      const activeRun = await getActiveAgentRun(ticket.epic_id, ticket.slice_id, ticket.ticket_id)
-      if (activeRun) {
-        // Found a running agent - set state to show it's running
-        setIsAgentRunning(true)
-        setModalAgentType(activeRun.agent_type)
-        setReconnectSessionId(activeRun.session_id)
-        setShouldAutoStart(false) // Don't auto-start, we're reconnecting
-      }
-    } catch (error) {
-      console.error('Failed to check for active agent run:', error)
-    }
-  }, [ticket])
-
+  // Sync modal agent type from global state when switching tickets
   useEffect(() => {
-    if (ticket) {
-      setNotes(ticket.notes || '')
-      setIsEditingNotes(false)
-      loadAgentRuns()
-      checkActiveAgentRun()
+    if (runningAgentInfo) {
+      setModalAgentType(runningAgentInfo.agentType)
+      setReconnectSessionId(runningAgentInfo.sessionId)
     }
-  }, [ticket, loadAgentRuns, checkActiveAgentRun])
+  }, [runningAgentInfo])
 
   if (!ticket) return null
 
@@ -101,11 +150,29 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
   const handleRunAgent = (agentType: AgentType) => {
     if (!ticket) return
 
+    // Don't allow clicking while we're checking for active agents
+    if (isCheckingActiveAgent) return
+
     // If agent is already running, just reopen the modal (don't auto-start again)
     if (isAgentRunning) {
       setShouldAutoStart(false)
       setIsModalOpen(true)
       return
+    }
+
+    // If this agent type has already completed, show the output instead of re-running
+    if (completedAgentTypes.has(agentType)) {
+      // Find the completed run to show
+      const completedRun = agentRuns.find(
+        run => run.agent_type === agentType && run.status === 'completed'
+      )
+      if (completedRun) {
+        setModalAgentType(agentType)
+        setReconnectSessionId(completedRun.session_id)
+        setShouldAutoStart(false)
+        setIsModalOpen(true)
+        return
+      }
     }
 
     // Find the most recent completed run to chain from (if applicable)
@@ -126,16 +193,28 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
   }
 
   const handleAgentStart = () => {
-    setIsAgentRunning(true)
+    if (!ticket || !modalAgentType) return
+
+    // Mark agent as started in global state
+    markAgentStarted({
+      sessionId: reconnectSessionId || '', // Will be updated when we get the actual session ID
+      ticketId: ticket.ticket_id,
+      epicId: ticket.epic_id,
+      sliceId: ticket.slice_id,
+      agentType: modalAgentType,
+      startedAt: new Date().toISOString(),
+    })
     setShouldAutoStart(false)  // Clear so reopening modal doesn't restart
   }
 
   const handleModalComplete = () => {
-    setIsAgentRunning(false)
+    if (ticket) {
+      markAgentCompleted(ticket.ticket_id)
+    }
     setModalAgentType(null)
     setModalPreviousSessionId(undefined)
     setReconnectSessionId(undefined) // Clear reconnect state
-    loadAgentRuns() // Refresh runs list when agent completes
+    reloadAgentRuns() // Refresh runs list when agent completes
   }
 
   const agentTypes: AgentType[] = ['research', 'planning', 'execution', 'evaluation']
@@ -219,6 +298,8 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
                 {agentTypes.map((type) => {
                   const info = getAgentTypeInfo(type)
                   const isThisRunning = isAgentRunning && modalAgentType === type
+                  const isThisChecking = isCheckingActiveAgent
+                  const isThisCompleted = completedAgentTypes.has(type)
                   return (
                     <Button
                       key={type}
@@ -226,14 +307,17 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
                       size="sm"
                       className={cn(
                         "h-auto py-2 flex flex-col items-start gap-0.5",
-                        isThisRunning && "border-blue-500 bg-blue-500/5"
+                        isThisRunning && "border-blue-500 bg-blue-500/5",
+                        isThisCompleted && !isThisRunning && "border-green-500/50 bg-green-500/5"
                       )}
                       onClick={() => handleRunAgent(type)}
-                      disabled={isAgentRunning && modalAgentType !== type}
+                      disabled={isThisChecking || (isAgentRunning && modalAgentType !== type)}
                     >
                       <div className="flex items-center gap-1.5 w-full">
                         {isThisRunning ? (
                           <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                        ) : isThisCompleted ? (
+                          <Check className="h-3 w-3 text-green-500" />
                         ) : (
                           <Play className={cn("h-3 w-3", info.color)} />
                         )}
@@ -241,9 +325,12 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
                         {isThisRunning && (
                           <span className="ml-auto text-[10px] text-blue-500">Running</span>
                         )}
+                        {isThisCompleted && !isThisRunning && (
+                          <span className="ml-auto text-[10px] text-green-500">Done</span>
+                        )}
                       </div>
                       <span className="text-[10px] text-muted-foreground font-normal">
-                        {isThisRunning ? 'Click to view output' : info.description}
+                        {isThisRunning ? 'Click to view output' : isThisCompleted ? 'Click to view results' : info.description}
                       </span>
                     </Button>
                   )

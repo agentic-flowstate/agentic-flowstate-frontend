@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { AlertCircle, CheckCircle, Clock, Circle, ChevronDown, ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { TicketBoardProps } from './TicketBoardDesktop'
+import { useAgentState } from '@/contexts/agent-state-context'
 
 // Define status lanes
 const STATUS_LANES = [
@@ -16,6 +17,7 @@ const STATUS_LANES = [
 ] as const
 
 export function TicketBoardMobile({ tickets, focusedTicket, onTicketClick }: TicketBoardProps) {
+  const { isAgentRunning } = useAgentState()
   // Track which lanes are expanded
   const [expandedLanes, setExpandedLanes] = useState<Set<string>>(new Set(['open', 'in_progress', 'blocked']))
 
@@ -90,19 +92,27 @@ export function TicketBoardMobile({ tickets, focusedTicket, onTicketClick }: Tic
                         No tickets
                       </div>
                     ) : (
-                      laneTickets.map((ticket) => (
+                      laneTickets.map((ticket) => {
+                        const isProcessing = isAgentRunning(ticket.ticket_id)
+                        return (
                         <button
                           key={ticket.ticket_id}
                           onClick={() => onTicketClick(ticket)}
                           className={cn(
                             "w-full p-3 bg-card border rounded-lg transition-all text-left",
                             "active:scale-[0.98]",
-                            focusedTicket === ticket.ticket_id
+                            // Animated RGB border when agent is processing
+                            isProcessing && "rgb-processing-border",
+                            // Normal styling when not processing
+                            !isProcessing && focusedTicket === ticket.ticket_id
                               ? "border-primary ring-1 ring-primary/20"
-                              : "border-border",
-                            (ticket.blocks_tickets && ticket.blocks_tickets.length > 0) ||
-                            (ticket.blocked_by_tickets && ticket.blocked_by_tickets.length > 0) ||
-                            (ticket.caused_by_tickets && ticket.caused_by_tickets.length > 0)
+                              : !isProcessing ? "border-border" : "",
+                            // Show cross-slice relationships with yellow border (only when not processing)
+                            !isProcessing && (
+                              (ticket.blocks_tickets && ticket.blocks_tickets.length > 0) ||
+                              (ticket.blocked_by_tickets && ticket.blocked_by_tickets.length > 0) ||
+                              (ticket.caused_by_tickets && ticket.caused_by_tickets.length > 0)
+                            )
                               ? "border-yellow-600/30"
                               : ""
                           )}
@@ -154,7 +164,7 @@ export function TicketBoardMobile({ tickets, focusedTicket, onTicketClick }: Tic
                             )}
                           </div>
                         </button>
-                      ))
+                      )})
                     )}
                   </div>
                 </CollapsibleContent>
