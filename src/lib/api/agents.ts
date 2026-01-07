@@ -419,7 +419,13 @@ export interface ResultEvent {
   is_error: boolean
 }
 
-export type StreamEvent = TextEvent | ToolUseEvent | ToolResultEvent | ThinkingEvent | StatusEvent | ResultEvent
+export interface ReplayCompleteEvent {
+  type: 'replay_complete'
+  total_events: number
+  agent_status: string
+}
+
+export type StreamEvent = TextEvent | ToolUseEvent | ToolResultEvent | ThinkingEvent | StatusEvent | ResultEvent | ReplayCompleteEvent
 
 /**
  * Stream agent run with structured events

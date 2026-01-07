@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
-import { X, Link2, FileText, Save, Bot, Play, ChevronDown, ChevronUp, Loader2, Check } from 'lucide-react'
+import { X, Link2, FileText, Save, Bot, Play, Loader2, Check } from 'lucide-react'
 import { Ticket } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -9,7 +9,6 @@ import { updateTicketNotes } from '@/lib/api/tickets'
 import {
   getAgentRuns,
   getAgentTypeInfo,
-  getStatusInfo,
   type AgentType,
   type AgentRun,
 } from '@/lib/api/agents'
@@ -40,7 +39,6 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([])
   const [isLoadingRuns, setIsLoadingRuns] = useState(false)
   const [isCheckingActiveAgent, setIsCheckingActiveAgent] = useState(false)
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
 
   // Modal state - persists even when modal is closed
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -131,6 +129,15 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
     }
   }, [runningAgentInfo])
 
+  // Determine which agent types to show based on assignee
+  // Jake Greene only gets Research agent
+  const agentTypes: AgentType[] = useMemo(() => {
+    if (ticket?.assignee?.toLowerCase() === 'jake greene') {
+      return ['research']
+    }
+    return ['research', 'planning', 'execution', 'evaluation']
+  }, [ticket?.assignee])
+
   if (!ticket) return null
 
   const handleSaveNotes = async () => {
@@ -216,8 +223,6 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
     setReconnectSessionId(undefined) // Clear reconnect state
     reloadAgentRuns() // Refresh runs list when agent completes
   }
-
-  const agentTypes: AgentType[] = ['research', 'planning', 'execution', 'evaluation']
 
   return (
     <>
@@ -337,67 +342,6 @@ export function TicketDrawer({ ticket, isOpen, onClose }: TicketDetailProps) {
                 })}
               </div>
 
-              {/* Agent Run History */}
-              <div className="space-y-2">
-                {isLoadingRuns ? (
-                  <div className="text-xs text-muted-foreground text-center py-4">
-                    Loading agent runs...
-                  </div>
-                ) : agentRuns.length === 0 ? (
-                  <div className="text-xs text-muted-foreground text-center py-4 bg-muted/20 rounded-md">
-                    No agent runs yet. Click a button above to run an agent.
-                  </div>
-                ) : (
-                  agentRuns.map((run) => {
-                    const typeInfo = getAgentTypeInfo(run.agent_type)
-                    const statusInfo = getStatusInfo(run.status)
-                    const isExpanded = expandedRunId === run.session_id
-
-                    return (
-                      <div
-                        key={run.session_id}
-                        className="bg-muted/20 rounded-md border border-border overflow-hidden"
-                      >
-                        {/* Run Header */}
-                        <div
-                          className="p-2 cursor-pointer hover:bg-muted/30 transition-colors"
-                          onClick={() => setExpandedRunId(isExpanded ? null : run.session_id)}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className={cn("text-xs font-medium", typeInfo.color)}>
-                                {typeInfo.label}
-                              </span>
-                              <span className={cn("text-[10px]", statusInfo.color)}>
-                                {statusInfo.label}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-muted-foreground">
-                                {new Date(run.started_at).toLocaleString()}
-                              </span>
-                              {isExpanded ? (
-                                <ChevronUp className="h-3 w-3 text-muted-foreground" />
-                              ) : (
-                                <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Expanded Content */}
-                        {isExpanded && run.output_summary && (
-                          <div className="px-2 pb-2">
-                            <div className="p-2 bg-background rounded text-xs text-muted-foreground whitespace-pre-wrap max-h-64 overflow-y-auto">
-                              {run.output_summary}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                )}
-              </div>
             </div>
 
             {/* Notes */}

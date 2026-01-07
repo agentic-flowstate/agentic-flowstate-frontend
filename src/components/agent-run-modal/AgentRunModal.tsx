@@ -17,6 +17,7 @@ import {
   type AgentType,
   type StreamEvent,
   type ToolResultEvent,
+  type ReplayCompleteEvent,
 } from '@/lib/api/agents'
 import { Ticket } from '@/lib/types'
 import ReactMarkdown from 'react-markdown'
@@ -167,6 +168,7 @@ export function AgentRunModal({
   }, [])
 
   // Reconnect to an existing agent run to fetch stored output
+  // Buffers all events until replay_complete is received, then processes them all at once
   const reconnectToAgent = async (sessionId: string) => {
     setIsReconnecting(true)
     setMessages([])
@@ -175,111 +177,39 @@ export function AgentRunModal({
     userScrolledRef.current = false
     hasCompletedRef.current = false
 
-    // Add a status message to show we're reconnecting
+    // Add a status message to show we're loading
     setMessages([{
       type: 'status',
       status: 'reconnecting',
-      message: 'Reconnecting to agent run...'
+      message: 'Loading agent output...'
     }])
+
+    // Buffer events until we receive replay_complete
+    const eventBuffer: StreamEvent[] = []
+    let replayComplete: ReplayCompleteEvent | null = null
 
     await reconnectAgentStream(
       sessionId,
       (event: StreamEvent) => {
-        switch (event.type) {
-          case 'text':
-            setMessages(prev => {
-              // Remove the reconnecting status message and add text
-              const filtered = prev.filter(b => b.status !== 'reconnecting')
-              const last = filtered[filtered.length - 1]
-              if (last?.type === 'text') {
-                return [
-                  ...filtered.slice(0, -1),
-                  { ...last, content: (last.content || '') + event.content }
-                ]
-              }
-              return [...filtered, { type: 'text', content: event.content }]
-            })
-            break
-
-          case 'tool_use':
-            const toolCall: ToolCall = {
-              id: event.id,
-              name: event.name,
-              input: event.input,
-              isExpanded: false,
-              status: 'completed', // Mark as completed since we're replaying
-            }
-            setMessages(prev => {
-              const filtered = prev.filter(b => b.status !== 'reconnecting')
-              const last = filtered[filtered.length - 1]
-              if (last?.type === 'tool_calls') {
-                return [
-                  ...filtered.slice(0, -1),
-                  { ...last, toolCalls: [...(last.toolCalls || []), toolCall], toolsCollapsed: true }
-                ]
-              }
-              return [...filtered, { type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true }]
-            })
-            break
-
-          case 'tool_result':
-            const resultEvent = event as ToolResultEvent
-            setMessages(prev => {
-              return prev.map(block => {
-                if (block.type === 'tool_calls' && block.toolCalls) {
-                  return {
-                    ...block,
-                    toolCalls: block.toolCalls.map(tc =>
-                      tc.id === resultEvent.tool_use_id
-                        ? {
-                            ...tc,
-                            result: resultEvent.content || '(empty response)',
-                            isError: resultEvent.is_error,
-                            status: resultEvent.is_error ? 'error' as const : 'completed' as const
-                          }
-                        : tc
-                    )
-                  }
-                }
-                return block
-              })
-            })
-            break
-
-          case 'thinking':
-            setMessages(prev => {
-              const filtered = prev.filter(b => b.status !== 'reconnecting')
-              return [...filtered, { type: 'thinking', content: event.content }]
-            })
-            break
-
-          case 'status':
-            setCurrentStatus(event.status)
-            // Only show status messages for non-running states (and not reconnecting)
-            // Running state is indicated by the header loader, not a message
-            if (event.message && event.status !== 'reconnecting' && event.status !== 'running') {
-              setMessages(prev => [...prev, { type: 'status', status: event.status, message: event.message }])
-            }
-            break
-
-          case 'result':
-            setCurrentStatus(event.is_error ? 'failed' : 'completed')
-            setIsReconnecting(false)
-            if (!hasCompletedRef.current) {
-              hasCompletedRef.current = true
-              onComplete?.()
-            }
-            break
+        if (event.type === 'replay_complete') {
+          // Store the replay complete event and process all buffered events
+          replayComplete = event as ReplayCompleteEvent
+          processBufferedEvents(eventBuffer, replayComplete)
+        } else if (replayComplete) {
+          // After replay_complete, process events immediately (live events)
+          processLiveEvent(event)
+        } else {
+          // Before replay_complete, buffer all events
+          eventBuffer.push(event)
         }
       },
       () => {
         setIsReconnecting(false)
-        if (currentStatus === 'running') {
-          // Agent is still running - show loader in the content area
-          // The header already shows "Running..." so no need for a separate message
-          // Just clear the reconnecting status and let the running state speak for itself
-          setMessages(prev => prev.filter(b => b.status !== 'reconnecting'))
-        } else if (!hasCompletedRef.current) {
+        // If we never got replay_complete (old backend), process buffered events now
+        if (!replayComplete && eventBuffer.length > 0) {
+          processBufferedEvents(eventBuffer, null)
+        }
+        if (!hasCompletedRef.current && currentStatus !== 'running') {
           hasCompletedRef.current = true
           setCurrentStatus('completed')
           onComplete?.()
@@ -295,6 +225,239 @@ export function AgentRunModal({
         }
       }
     )
+  }
+
+  // Process all buffered events at once after replay is complete
+  // Since tool_result events aren't emitted by cc-sdk, we determine tool status by:
+  // - If agent is completed: all tools are completed
+  // - If agent is running: only the LAST tool_use (with no subsequent events) is running
+  const processBufferedEvents = (events: StreamEvent[], replayInfo: ReplayCompleteEvent | null) => {
+    // Determine if agent is still running
+    const agentStillRunning = replayInfo?.agent_status === 'running'
+
+    // Find the last tool_use event index - only this one might still be running
+    let lastToolUseId: string | null = null
+    for (let i = events.length - 1; i >= 0; i--) {
+      const event = events[i]
+      if (event.type === 'tool_use') {
+        lastToolUseId = event.id
+        break
+      }
+      // If we see text/thinking after tools, all tools are done
+      if (event.type === 'text' || event.type === 'thinking') {
+        break
+      }
+    }
+
+    // Build a set of tool_use_ids that have explicit results (rare but handle it)
+    const toolResults = new Set<string>()
+    for (const event of events) {
+      if (event.type === 'tool_result') {
+        toolResults.add((event as ToolResultEvent).tool_use_id)
+      }
+    }
+
+    // Build message blocks from buffered events
+    const newMessages: MessageBlock[] = []
+
+    for (const event of events) {
+      switch (event.type) {
+        case 'text':
+          const lastText = newMessages[newMessages.length - 1]
+          if (lastText?.type === 'text') {
+            lastText.content = (lastText.content || '') + event.content
+          } else {
+            newMessages.push({ type: 'text', content: event.content })
+          }
+          break
+
+        case 'tool_use': {
+          // Tool is running only if: agent is running AND this is the last tool AND no result exists
+          const hasResult = toolResults.has(event.id)
+          const isLastTool = event.id === lastToolUseId
+          const status: ToolCall['status'] = hasResult
+            ? 'completed'
+            : (agentStillRunning && isLastTool ? 'running' : 'completed')
+
+          const toolCall: ToolCall = {
+            id: event.id,
+            name: event.name,
+            input: event.input,
+            isExpanded: false,
+            status,
+          }
+          const lastTools = newMessages[newMessages.length - 1]
+          if (lastTools?.type === 'tool_calls') {
+            lastTools.toolCalls = [...(lastTools.toolCalls || []), toolCall]
+            lastTools.toolsCollapsed = true
+          } else {
+            newMessages.push({ type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true })
+          }
+          break
+        }
+
+        case 'tool_result': {
+          const resultEvent = event as ToolResultEvent
+          // Find and update the tool with this result
+          for (const block of newMessages) {
+            if (block.type === 'tool_calls' && block.toolCalls) {
+              for (const tc of block.toolCalls) {
+                if (tc.id === resultEvent.tool_use_id) {
+                  tc.result = resultEvent.content || '(empty response)'
+                  tc.isError = resultEvent.is_error
+                  tc.status = resultEvent.is_error ? 'error' : 'completed'
+                }
+              }
+            }
+          }
+          break
+        }
+
+        case 'thinking':
+          newMessages.push({ type: 'thinking', content: event.content })
+          break
+
+        case 'status':
+          // Don't add status messages during replay, just update current status
+          if (event.status !== 'reconnecting') {
+            setCurrentStatus(event.status)
+          }
+          break
+
+        case 'result':
+          setCurrentStatus(event.is_error ? 'failed' : 'completed')
+          setIsReconnecting(false)
+          if (!hasCompletedRef.current) {
+            hasCompletedRef.current = true
+            onComplete?.()
+          }
+          break
+      }
+    }
+
+    // Set all messages at once
+    setMessages(newMessages)
+
+    // Update status based on replay info
+    if (replayInfo) {
+      setCurrentStatus(replayInfo.agent_status)
+      if (replayInfo.agent_status !== 'running') {
+        setIsReconnecting(false)
+        if (!hasCompletedRef.current) {
+          hasCompletedRef.current = true
+          onComplete?.()
+        }
+      }
+    }
+  }
+
+  // Process a single live event (after replay is complete)
+  const processLiveEvent = (event: StreamEvent) => {
+    // Helper to mark all running tools as completed (tool results aren't streamed from CLI)
+    const markToolsCompleted = (blocks: MessageBlock[]): MessageBlock[] => {
+      return blocks.map(block => {
+        if (block.type === 'tool_calls' && block.toolCalls) {
+          const hasRunning = block.toolCalls.some(tc => tc.status === 'running')
+          if (hasRunning) {
+            return {
+              ...block,
+              toolCalls: block.toolCalls.map(tc =>
+                tc.status === 'running'
+                  ? { ...tc, status: 'completed' as const }
+                  : tc
+              )
+            }
+          }
+        }
+        return block
+      })
+    }
+
+    switch (event.type) {
+      case 'text':
+        setMessages(prev => {
+          // Mark any running tools as completed - text after tools means they finished
+          const updated = markToolsCompleted(prev)
+          const last = updated[updated.length - 1]
+          if (last?.type === 'text') {
+            return [
+              ...updated.slice(0, -1),
+              { ...last, content: (last.content || '') + event.content }
+            ]
+          }
+          return [...updated, { type: 'text', content: event.content }]
+        })
+        break
+
+      case 'tool_use': {
+        const toolCall: ToolCall = {
+          id: event.id,
+          name: event.name,
+          input: event.input,
+          isExpanded: false,
+          status: 'running',
+        }
+        setMessages(prev => {
+          // Mark previous running tools as completed before adding new one
+          const updated = markToolsCompleted(prev)
+          const last = updated[updated.length - 1]
+          if (last?.type === 'tool_calls') {
+            return [
+              ...updated.slice(0, -1),
+              { ...last, toolCalls: [...(last.toolCalls || []), toolCall], toolsCollapsed: true }
+            ]
+          }
+          return [...updated, { type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true }]
+        })
+        break
+      }
+
+      case 'tool_result': {
+        const resultEvent = event as ToolResultEvent
+        setMessages(prev => {
+          return prev.map(block => {
+            if (block.type === 'tool_calls' && block.toolCalls) {
+              return {
+                ...block,
+                toolCalls: block.toolCalls.map(tc =>
+                  tc.id === resultEvent.tool_use_id
+                    ? {
+                        ...tc,
+                        result: resultEvent.content || '(empty response)',
+                        isError: resultEvent.is_error,
+                        status: resultEvent.is_error ? 'error' as const : 'completed' as const
+                      }
+                    : tc
+                )
+              }
+            }
+            return block
+          })
+        })
+        break
+      }
+
+      case 'thinking':
+        setMessages(prev => [...prev, { type: 'thinking', content: event.content }])
+        break
+
+      case 'status':
+        setCurrentStatus(event.status)
+        if (event.message && event.status !== 'running') {
+          setMessages(prev => [...prev, { type: 'status', status: event.status, message: event.message }])
+        }
+        break
+
+      case 'result':
+        finalizeAllTools()
+        setCurrentStatus(event.is_error ? 'failed' : 'completed')
+        setIsReconnecting(false)
+        if (!hasCompletedRef.current) {
+          hasCompletedRef.current = true
+          onComplete?.()
+        }
+        break
+    }
   }
 
   const startAgent = async () => {
