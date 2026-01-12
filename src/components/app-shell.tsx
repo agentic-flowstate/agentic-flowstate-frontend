@@ -85,8 +85,8 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </header>
 
-      {/* Main Content - with top padding for fixed header */}
-      <main className="pt-12 min-h-screen">
+      {/* Main Content - positioned below fixed header */}
+      <main className="fixed top-12 left-0 right-0 bottom-0 overflow-hidden">
         {children}
       </main>
     </div>

@@ -36,7 +36,7 @@ export default function WorkspacePage() {
 
 function WorkspaceLoading() {
   return (
-    <div className="h-screen bg-background flex items-center justify-center">
+    <div className="h-full bg-background flex items-center justify-center overflow-hidden">
       <div className="text-muted-foreground text-sm">Loading workspace...</div>
     </div>
   )
@@ -460,7 +460,7 @@ function WorkspaceContent() {
   }, [allSlices, selectedSliceIds])
 
   return (
-    <div className="h-screen bg-background flex overflow-hidden">
+    <div className="h-full bg-background flex overflow-hidden">
       <Sidebar
         epics={filteredEpics}
         slices={allSlices}
@@ -473,7 +473,7 @@ function WorkspaceContent() {
       />
 
       {/* Main workspace area */}
-      <div className="flex-1 flex flex-col mt-12 min-w-0">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar with filters */}
         <div className="h-10 bg-background border-b flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-2">

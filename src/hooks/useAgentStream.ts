@@ -151,11 +151,13 @@ export function useAgentStream(): UseAgentStreamResult {
           // Add to existing tool_calls block or create new one
           const last = updated[updated.length - 1]
           if (last?.type === 'tool_calls') {
+            // Preserve existing toolsCollapsed state when adding to existing block
             return [
               ...updated.slice(0, -1),
-              { ...last, toolCalls: [...(last.toolCalls || []), toolCall], toolsCollapsed: true }
+              { ...last, toolCalls: [...(last.toolCalls || []), toolCall] }
             ]
           }
+          // New tool block starts collapsed
           return [...updated, { type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true }]
         })
         break

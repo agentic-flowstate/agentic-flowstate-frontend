@@ -9,7 +9,7 @@ export default function TranscriptsPage() {
   const [selectedSession, setSelectedSession] = useState<TranscriptSession | null>(null)
 
   return (
-    <div className="h-screen bg-background flex">
+    <div className="h-full bg-background flex overflow-hidden">
       {/* Sidebar - Session list */}
       <div className="w-80 border-r bg-muted/10 flex flex-col">
         <div className="h-12 border-b flex items-center px-4 gap-2 bg-background">

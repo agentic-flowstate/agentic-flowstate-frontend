@@ -199,6 +199,7 @@ function WorkspaceManagerContent() {
 
     try {
       if (!convId) {
+        console.log('[workspace-manager] Creating new conversation for org:', selectedOrg.id)
         const createResponse = await fetch(`${API_BASE}/api/conversations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -208,6 +209,7 @@ function WorkspaceManagerContent() {
         if (createResponse.ok) {
           const createdConv: ApiConversation = await createResponse.json()
           convId = createdConv.id
+          console.log('[workspace-manager] Created conversation:', convId)
           setCurrentConversationId(convId)
           setConversations(prev => [{
             id: convId!,
@@ -218,8 +220,13 @@ function WorkspaceManagerContent() {
             messageCount: 1,
             blocks: [userBlock]
           }, ...prev])
+        } else {
+          const errorText = await createResponse.text()
+          console.error('[workspace-manager] Failed to create conversation:', createResponse.status, errorText)
+          // Continue without persistence - conversation won't be saved
         }
       } else {
+        console.log('[workspace-manager] Using existing conversation:', convId)
         setConversations(prev => prev.map(conv =>
           conv.id === convId ? { ...conv, blocks: [...conv.blocks, userBlock], messageCount: conv.messageCount + 1 } : conv
         ))
@@ -237,6 +244,7 @@ function WorkspaceManagerContent() {
         ? `${API_BASE}/api/workspace-manager/resume`
         : `${API_BASE}/api/workspace-manager/chat`
 
+      console.log('[workspace-manager] Calling API:', endpoint, { sessionId, convId })
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -319,7 +327,7 @@ function WorkspaceManagerContent() {
   const chatEnabled = selectedOrg !== null
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] mt-12">
+    <div className="flex h-full overflow-hidden">
       <ConversationSidebar
         organizations={organizations}
         selectedOrg={selectedOrg}
@@ -333,9 +341,9 @@ function WorkspaceManagerContent() {
       />
 
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-background">
+      <div className="flex-1 flex flex-col bg-background overflow-hidden">
         {!chatEnabled ? (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+          <div className="flex-1 flex items-center justify-center text-muted-foreground overflow-hidden">
             <div className="text-center">
               <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <h2 className="text-lg font-semibold mb-2">Workspace Manager</h2>
@@ -348,40 +356,40 @@ function WorkspaceManagerContent() {
         ) : (
           <>
             {/* Messages */}
-            <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6">
-              <div className="max-w-3xl mx-auto space-y-4">
-                {messages.length === 0 ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    <div className="text-center max-w-lg">
-                      <Bot className="h-12 w-12 mx-auto mb-4 text-primary/50" />
-                      <h3 className="text-lg font-semibold mb-2">Start Planning</h3>
-                      <p className="text-sm mb-4">
-                        Describe what you want to build and I&apos;ll help you break it down into slices and tickets.
-                      </p>
-                      <div className="text-xs text-muted-foreground/70 space-y-1">
-                        <p>Try: &quot;I want to add dark mode to the app&quot;</p>
-                        <p>Or: &quot;What tickets exist for this organization?&quot;</p>
-                      </div>
-                    </div>
+            {messages.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center p-6 text-muted-foreground">
+                <div className="text-center max-w-lg">
+                  <Bot className="h-12 w-12 mx-auto mb-4 text-primary/50" />
+                  <h3 className="text-lg font-semibold mb-2">Start Planning</h3>
+                  <p className="text-sm mb-4">
+                    Describe what you want to build and I&apos;ll help you break it down into slices and tickets.
+                  </p>
+                  <div className="text-xs text-muted-foreground/70 space-y-1">
+                    <p>Try: &quot;I want to add dark mode to the app&quot;</p>
+                    <p>Or: &quot;What tickets exist for this organization?&quot;</p>
                   </div>
-                ) : (
+                </div>
+              </div>
+            ) : (
+              <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6">
+                <div className="max-w-3xl mx-auto space-y-4">
                   <MessageRenderer
                     messages={messages}
                     onToggleToolExpanded={toggleToolExpanded}
                     onToggleToolsCollapsed={toggleToolsCollapsed}
                     isLoading={isRunning}
                   />
-                )}
 
-                {error && (
-                  <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    {error}
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
+                  {error && (
+                    <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      {error}
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Input */}
             <div className="border-t p-4 bg-background">
@@ -433,7 +441,7 @@ function WorkspaceManagerContent() {
 export default function WorkspaceManagerPage() {
   return (
     <Suspense fallback={
-      <div className="flex h-[calc(100vh-3rem)] mt-12 items-center justify-center">
+      <div className="flex h-full overflow-hidden items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     }>

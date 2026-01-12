@@ -339,7 +339,7 @@ export default function EmailsPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] mt-12">
+    <div className="flex h-full overflow-hidden">
       {/* Email List */}
       <div className={cn(
         "w-full md:w-96 border-r flex flex-col bg-background",

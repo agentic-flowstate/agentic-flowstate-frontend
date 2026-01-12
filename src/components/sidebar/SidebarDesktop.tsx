@@ -99,7 +99,7 @@ export function SidebarDesktop({
       ref={sidebarRef}
       className={cn(
         "relative h-full bg-background border-r flex-shrink-0",
-        "flex flex-col mt-12",
+        "flex flex-col",
         "hidden md:flex",
         !isResizing && "transition-all duration-200"
       )}

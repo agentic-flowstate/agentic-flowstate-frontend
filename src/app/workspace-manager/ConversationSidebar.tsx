@@ -37,7 +37,7 @@ export function ConversationSidebar({
     : conversations
 
   return (
-    <div className="w-64 border-r flex flex-col bg-background">
+    <div className="w-64 border-r flex flex-col bg-background overflow-hidden">
       <div className="h-14 border-b flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <Bot className="h-4 w-4 text-primary" />
