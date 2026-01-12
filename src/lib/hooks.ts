@@ -4,8 +4,13 @@ import { useState, useEffect } from 'react'
 
 const MOBILE_BREAKPOINT = 768
 
-export function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(false)
+/**
+ * Hook to detect mobile viewport.
+ * Returns undefined during SSR/initial hydration, then true/false once client-side.
+ * Components should handle the undefined case (e.g., render nothing or a loading state).
+ */
+export function useIsMobile(): boolean | undefined {
+  const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined)
 
   useEffect(() => {
     // Check initial state

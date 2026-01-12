@@ -3,6 +3,13 @@ import type { NextConfig } from 'next'
 const config: NextConfig = {
     generateEtags: false,
     poweredByHeader: false,
+    // Allow cross-origin requests from Tailscale network in dev mode
+    allowedDevOrigins: [
+        'http://100.119.87.128:3000',
+        'http://jarviss-mac-mini-1:3000',
+        'http://jarviss-mac-mini:3000',
+        'http://localhost:3000',
+    ],
     // Aggressive cache busting for development
     headers: async () => [
         {

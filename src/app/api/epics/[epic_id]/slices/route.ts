@@ -10,9 +10,14 @@ export async function GET(
   try {
     const params = await context.params
     const { epic_id } = params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
-    // Call Rust API service
-    const response = await fetch(`${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices`)
+    // Call Rust API service with organization header
+    const response = await fetch(`${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices`, {
+      headers: {
+        'X-Organization': organization,
+      },
+    })
 
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`)

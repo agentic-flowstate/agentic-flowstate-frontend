@@ -176,3 +176,63 @@
   animation: rgb-border-spin 3s linear infinite;
   pointer-events: none;
 }
+
+/* React Flow graph animations */
+@keyframes graph-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(59, 130, 246, 0);
+  }
+}
+
+@keyframes graph-pulse-amber {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+}
+
+/* Pipeline step pulse animations */
+.animate-pulse-blue {
+  animation: graph-pulse 1.5s infinite;
+}
+
+.animate-pulse-amber {
+  animation: graph-pulse-amber 1.5s infinite;
+}
+
+/* React Flow custom styling */
+.react-flow__node {
+  cursor: pointer;
+}
+
+.react-flow__node:focus {
+  outline: none;
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #18181b;
+  background: #3f3f46;
+}
+
+.react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+/* Smooth edge animations */
+.react-flow__edge.animated path {
+  stroke-dasharray: 5;
+  animation: dash 0.5s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}

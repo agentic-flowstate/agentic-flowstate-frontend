@@ -154,6 +154,23 @@ export async function getTicket(epicId: string, sliceId: string, ticketId: strin
 }
 
 /**
+ * Get a single ticket by ID only (without knowing epic/slice)
+ * @param ticketId - Ticket ID
+ * @returns Promise resolving to ticket or undefined if not found
+ */
+export async function getTicketById(ticketId: string): Promise<Ticket | undefined> {
+  try {
+    return await callAPI<Ticket>(`/api/tickets/${encodeURIComponent(ticketId)}`)
+  } catch (error) {
+    // Return undefined for 404s
+    if (error instanceof Error && error.message.includes('404')) {
+      return undefined
+    }
+    throw error
+  }
+}
+
+/**
  * Create a new ticket
  * @param epicId - Epic ID
  * @param sliceId - Slice ID
@@ -272,4 +289,56 @@ export async function removeTicketRelationship(
       target_ticket_id: targetTicketId
     })
   })
+}
+
+// Ticket History Types
+export interface TicketHistoryEvent {
+  id: number
+  ticket_id: string
+  event_type: 'status_change' | 'agent_run_completed' | 'note_added' | 'assignee_changed' | 'ticket_created' | 'draft_created' | 'email_sent'
+  event_data: Record<string, unknown>
+  created_at: number
+  created_at_iso: string
+}
+
+export interface TicketHistoryResponse {
+  events: TicketHistoryEvent[]
+}
+
+/**
+ * Get ticket history events
+ * @param epicId - Epic ID
+ * @param sliceId - Slice ID
+ * @param ticketId - Ticket ID
+ * @param limit - Optional limit on number of events to return
+ * @returns Promise resolving to ticket history events
+ */
+export async function getTicketHistory(
+  epicId: string,
+  sliceId: string,
+  ticketId: string,
+  limit?: number
+): Promise<TicketHistoryEvent[]> {
+  const params = limit ? `?limit=${limit}` : ''
+  const response = await callAPI<TicketHistoryResponse>(
+    `/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets/${encodeURIComponent(ticketId)}/history${params}`
+  )
+  return response.events
+}
+
+/**
+ * Get ticket history events by ticket ID only
+ * @param ticketId - Ticket ID
+ * @param limit - Optional limit on number of events to return
+ * @returns Promise resolving to ticket history events
+ */
+export async function getTicketHistoryById(
+  ticketId: string,
+  limit?: number
+): Promise<TicketHistoryEvent[]> {
+  const params = limit ? `?limit=${limit}` : ''
+  const response = await callAPI<TicketHistoryResponse>(
+    `/api/tickets/${encodeURIComponent(ticketId)}/history${params}`
+  )
+  return response.events
 }

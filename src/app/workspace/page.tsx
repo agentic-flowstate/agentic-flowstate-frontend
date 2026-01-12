@@ -2,17 +2,17 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Menu } from 'lucide-react'
+import { Menu, GitBranch } from 'lucide-react'
 import { Sidebar } from '@/components/sidebar'
-import { TicketBoard } from '@/components/ticket-board'
 import { TicketDetail } from '@/components/ticket-detail'
 import { AssigneeFilter } from '@/components/assignee-filter'
+import { SliceGraphWithApproval } from '@/components/slice-graph'
 import { Button } from '@/components/ui/button'
-import { getEpics, getSlices, getTickets } from '@/lib/api/tickets'
-import { Epic, Slice, Ticket } from '@/lib/types'
+import { getEpics, getSlices, getTickets, getTicketById } from '@/lib/api/tickets'
+import { getTicketPipelines } from '@/lib/api/pipelines'
+import { Epic, Slice, Ticket, GraphTicket } from '@/lib/types'
 import { useOrganization } from '@/contexts/organization-context'
 import { useAgentState } from '@/contexts/agent-state-context'
-import { useIsMobile } from '@/lib/hooks'
 
 // Helper to parse comma-separated URL params into a Set
 function parseSetParam(param: string | null): Set<string> {
@@ -48,7 +48,6 @@ function WorkspaceContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isInitialized = useRef(false)
-  const isMobile = useIsMobile()
 
   // Data state
   const [epics, setEpics] = useState<Epic[]>([])
@@ -71,6 +70,12 @@ function WorkspaceContent() {
   const [selectedAssignee, setSelectedAssignee] = useState<string | null>(
     searchParams.get('assignee')
   )
+  const [activeAgentRun, setActiveAgentRun] = useState<string | null>(
+    searchParams.get('run')
+  )
+
+  // Pipeline data for graph view
+  const [graphTickets, setGraphTickets] = useState<GraphTicket[]>([])
 
   // Mobile sidebar state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
@@ -99,10 +104,13 @@ function WorkspaceContent() {
     if (selectedAssignee) {
       params.set('assignee', selectedAssignee)
     }
+    if (activeAgentRun) {
+      params.set('run', activeAgentRun)
+    }
 
     const newUrl = params.toString() ? `?${params.toString()}` : '/workspace'
     router.replace(newUrl, { scroll: false })
-  }, [selectedEpicIds, selectedSliceIds, focusedTicket, selectedAssignee, router])
+  }, [selectedEpicIds, selectedSliceIds, focusedTicket, selectedAssignee, activeAgentRun, router])
 
   // Load epics when organization changes
   useEffect(() => {
@@ -232,21 +240,103 @@ function WorkspaceContent() {
     loadTicketsForSlices()
   }, [selectedSliceIds, slicesByEpic])
 
+  // Load pipelines when tickets change
+  useEffect(() => {
+    async function loadPipelines() {
+      const allTickets = Object.values(ticketsBySlice).flat()
+      if (allTickets.length === 0) {
+        setGraphTickets([])
+        return
+      }
+
+      try {
+        const ticketIds = allTickets.map(t => t.ticket_id)
+        const pipelines = await getTicketPipelines(ticketIds)
+
+        // Merge pipelines into tickets
+        const ticketsWithPipelines: GraphTicket[] = allTickets.map(ticket => ({
+          ...ticket,
+          pipeline: pipelines[ticket.ticket_id] || undefined,
+        }))
+
+        setGraphTickets(ticketsWithPipelines)
+      } catch (error) {
+        console.error('Failed to load pipelines:', error)
+        // Still show tickets without pipelines
+        setGraphTickets(allTickets as GraphTicket[])
+      }
+    }
+
+    loadPipelines()
+  }, [ticketsBySlice])
+
+  // Track which tickets we've already checked for running agents
+  const checkedTicketsRef = useRef<Set<string>>(new Set())
+
   // Check for running agents when tickets are loaded
   // This ensures the RGB border shows on page reload
   useEffect(() => {
     const allTickets = Object.values(ticketsBySlice).flat()
     if (allTickets.length === 0) return
 
-    // Check all loaded tickets for running agents
+    // Only check tickets we haven't checked yet
+    const ticketsToCheck = allTickets.filter(t => !checkedTicketsRef.current.has(t.ticket_id))
+    if (ticketsToCheck.length === 0) return
+
+    // Mark these tickets as checked
+    ticketsToCheck.forEach(t => checkedTicketsRef.current.add(t.ticket_id))
+
+    // Check for running agents
     refreshRunningAgents(
-      allTickets.map(t => ({
+      ticketsToCheck.map(t => ({
         epicId: t.epic_id,
         sliceId: t.slice_id,
         ticketId: t.ticket_id,
       }))
     )
-  }, [ticketsBySlice, refreshRunningAgents])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketsBySlice])
+
+  // Restore ticket from URL - fetch by ID if epic/slice not selected
+  useEffect(() => {
+    async function restoreTicketFromUrl() {
+      if (!focusedTicket) return
+
+      // If we already have the ticket loaded, just select it
+      const allTickets = Object.values(ticketsBySlice).flat()
+      const existingTicket = allTickets.find(t => t.ticket_id === focusedTicket)
+      if (existingTicket) {
+        if (!selectedTicket || selectedTicket.ticket_id !== existingTicket.ticket_id) {
+          setSelectedTicket(existingTicket)
+        }
+        return
+      }
+
+      // If epics haven't loaded yet, wait
+      if (epics.length === 0) return
+
+      // If no epic/slice selected but we have a ticket ID, fetch the ticket to get its epic/slice
+      if (selectedEpicIds.size === 0 && selectedSliceIds.size === 0) {
+        try {
+          const ticket = await getTicketById(focusedTicket)
+          if (ticket) {
+            // Auto-select the epic and slice
+            setSelectedEpicIds(new Set([ticket.epic_id]))
+            setSelectedSliceIds(new Set([ticket.slice_id]))
+            setSelectedTicket(ticket)
+          } else {
+            // Ticket not found, clear from URL
+            setFocusedTicket(null)
+          }
+        } catch (error) {
+          console.error('Failed to restore ticket from URL:', error)
+          setFocusedTicket(null)
+        }
+      }
+    }
+
+    restoreTicketFromUrl()
+  }, [focusedTicket, ticketsBySlice, selectedTicket, epics, selectedEpicIds, selectedSliceIds])
 
   // Toggle epic selection
   const handleEpicToggle = useCallback((epicId: string) => {
@@ -282,7 +372,43 @@ function WorkspaceContent() {
   const handleCloseDrawer = () => {
     setSelectedTicket(null)
     setFocusedTicket(null)
+    setActiveAgentRun(null)
   }
+
+  // Handle cross-slice dependency click - navigate to that slice
+  const handleCrossSliceClick = useCallback((ticketId: string, sliceId: string) => {
+    // Add the slice to selection if not already selected
+    setSelectedSliceIds(prev => {
+      const next = new Set(prev)
+      next.add(sliceId)
+      return next
+    })
+    // Focus on the ticket
+    setFocusedTicket(ticketId)
+  }, [])
+
+  // Refresh pipelines after approval
+  const handlePipelineRefresh = useCallback(() => {
+    // Trigger re-fetch by toggling a dummy state or just re-running the effect
+    // We'll force a refetch by clearing and setting graph tickets
+    setGraphTickets([])
+    const allTickets = Object.values(ticketsBySlice).flat()
+    if (allTickets.length > 0) {
+      getTicketPipelines(allTickets.map(t => t.ticket_id)).then(pipelines => {
+        const ticketsWithPipelines: GraphTicket[] = allTickets.map(ticket => ({
+          ...ticket,
+          pipeline: pipelines[ticket.ticket_id] || undefined,
+        }))
+        setGraphTickets(ticketsWithPipelines)
+      })
+    }
+  }, [ticketsBySlice])
+
+  // Handle graph ticket click - open ticket detail
+  const handleGraphTicketClick = useCallback((ticket: GraphTicket) => {
+    setFocusedTicket(ticket.ticket_id)
+    setSelectedTicket(ticket)
+  }, [])
 
   // Flatten all slices for sidebar
   const allSlices = useMemo(() => {
@@ -351,27 +477,27 @@ function WorkspaceContent() {
         {/* Top bar with filters */}
         <div className="h-10 bg-background border-b flex items-center justify-between px-4 flex-shrink-0">
           <div className="flex items-center gap-2">
-            {/* Mobile hamburger menu */}
-            {isMobile && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 md:hidden"
-                onClick={() => setIsMobileSidebarOpen(true)}
-              >
-                <Menu className="h-4 w-4" />
-              </Button>
-            )}
+            {/* Mobile hamburger menu - use CSS breakpoint for reliable hiding */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 md:hidden"
+              onClick={() => setIsMobileSidebarOpen(true)}
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
             <div className="text-xs text-muted-foreground">
               {selectedEpicIds.size} epic{selectedEpicIds.size !== 1 ? 's' : ''} · {selectedSliceIds.size} slice{selectedSliceIds.size !== 1 ? 's' : ''} · {filteredTickets.length} ticket{filteredTickets.length !== 1 ? 's' : ''}
               {selectedAssignee && ` for ${selectedAssignee}`}
             </div>
           </div>
-          <AssigneeFilter
-            availableAssignees={availableAssignees}
-            selectedAssignee={selectedAssignee}
-            onAssigneeChange={setSelectedAssignee}
-          />
+          <div className="flex items-center gap-2">
+            <AssigneeFilter
+              availableAssignees={availableAssignees}
+              selectedAssignee={selectedAssignee}
+              onAssigneeChange={setSelectedAssignee}
+            />
+          </div>
         </div>
 
         {/* Content area */}
@@ -385,10 +511,8 @@ function WorkspaceContent() {
                 </div>
                 <h2 className="text-xl font-semibold text-muted-foreground">No Epics Selected</h2>
                 <p className="text-sm text-muted-foreground">
-                  {isMobile
-                    ? "Tap the menu icon to select epics and slices"
-                    : "Select one or more epics from the sidebar to view their slices and tickets"
-                  }
+                  <span className="md:hidden">Tap the menu icon to select epics and slices</span>
+                  <span className="hidden md:inline">Select one or more epics from the sidebar to view their slices and tickets</span>
                 </p>
                 {isLoadingEpics && (
                   <div className="text-xs text-muted-foreground font-mono mt-4">Loading epics...</div>
@@ -422,13 +546,49 @@ function WorkspaceContent() {
                 </div>
               </div>
 
-              {/* Ticket board - always rendered, shows empty state when no slices selected */}
-              <div className="flex-1 p-2 md:p-6 min-h-0">
-                <TicketBoard
-                  tickets={filteredTickets}
-                  focusedTicket={focusedTicket}
-                  onTicketClick={handleTicketClick}
-                />
+              {/* Graph view - show per-slice graphs */}
+              <div className="flex-1 min-h-0">
+                <div className="h-full">
+                  {selectedSlices.length === 0 ? (
+                      <div className="h-full flex items-center justify-center">
+                        <div className="text-center text-muted-foreground">
+                          <GitBranch className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <p className="text-sm">Select a slice to view its ticket graph</p>
+                        </div>
+                      </div>
+                    ) : selectedSlices.length === 1 ? (
+                      /* Single slice - full graph */
+                      <SliceGraphWithApproval
+                        slice={selectedSlices[0]}
+                        tickets={graphTickets}
+                        allTickets={graphTickets}
+                        onTicketClick={handleGraphTicketClick}
+                        onCrossSliceClick={handleCrossSliceClick}
+                        onRefresh={handlePipelineRefresh}
+                      />
+                    ) : (
+                      /* Multiple slices - grid of graphs */
+                      <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-auto">
+                        {selectedSlices.map(slice => (
+                          <div key={slice.slice_id} className="h-[500px] bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
+                            <div className="h-8 px-3 flex items-center bg-zinc-900 border-b border-zinc-800">
+                              <span className="text-xs font-medium text-zinc-300 truncate">{slice.title}</span>
+                            </div>
+                            <div className="h-[calc(100%-32px)]">
+                              <SliceGraphWithApproval
+                                slice={slice}
+                                tickets={graphTickets.filter(t => t.slice_id === slice.slice_id)}
+                                allTickets={graphTickets}
+                                onTicketClick={handleGraphTicketClick}
+                                onCrossSliceClick={handleCrossSliceClick}
+                                onRefresh={handlePipelineRefresh}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
               </div>
             </div>
           )}
@@ -440,6 +600,8 @@ function WorkspaceContent() {
         ticket={selectedTicket}
         isOpen={!!selectedTicket}
         onClose={handleCloseDrawer}
+        activeAgentRun={activeAgentRun}
+        onAgentRunChange={setActiveAgentRun}
       />
     </div>
   )

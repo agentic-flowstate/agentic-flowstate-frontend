@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
 
-export type OrganizationId = 'telemetryops' | 'ballotradar'
+export type OrganizationId = string
 
 export interface Organization {
   id: OrganizationId
@@ -10,23 +10,28 @@ export interface Organization {
   displayName: string
 }
 
-const ORGANIZATIONS: Organization[] = [
-  {
-    id: 'telemetryops',
-    name: 'telemetryops',
-    displayName: 'TelemetryOps'
-  },
-  {
-    id: 'ballotradar',
-    name: 'ballotradar',
-    displayName: 'BallotRadar'
-  }
-]
+// Display name mappings for known organizations
+const DISPLAY_NAMES: Record<string, string> = {
+  'telemetryops': 'TelemetryOps',
+  'ballotradar': 'BallotRadar',
+  'agentic-flowstate': 'Agentic Flowstate',
+  'devops': 'DevOps',
+  'election-education-group': 'Election Education Group',
+}
+
+function toDisplayName(id: string): string {
+  if (DISPLAY_NAMES[id]) return DISPLAY_NAMES[id]
+  // Convert kebab-case to Title Case
+  return id.split('-').map(word =>
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join(' ')
+}
 
 interface OrganizationContextValue {
   organizations: Organization[]
   selectedOrg: Organization | null
   selectOrg: (org: Organization) => void
+  loading: boolean
 }
 
 const OrganizationContext = createContext<OrganizationContextValue | undefined>(undefined)
@@ -34,20 +39,44 @@ const OrganizationContext = createContext<OrganizationContextValue | undefined>(
 const STORAGE_KEY = 'selected-organization'
 
 export function OrganizationProvider({ children }: { children: React.ReactNode }) {
+  const [organizations, setOrganizations] = useState<Organization[]>([])
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Load from localStorage on mount
+  // Fetch organizations from API on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const org = ORGANIZATIONS.find(o => o.id === stored)
-      if (org) {
-        setSelectedOrg(org)
+    async function fetchOrganizations() {
+      try {
+        const response = await fetch('/api/organizations')
+        if (response.ok) {
+          const orgIds: string[] = await response.json()
+          const orgs: Organization[] = orgIds.map(id => ({
+            id,
+            name: id,
+            displayName: toDisplayName(id)
+          }))
+          setOrganizations(orgs)
+
+          // Load selected org from localStorage
+          const stored = localStorage.getItem(STORAGE_KEY)
+          if (stored) {
+            const org = orgs.find(o => o.id === stored)
+            if (org) {
+              setSelectedOrg(org)
+            } else if (orgs.length > 0) {
+              setSelectedOrg(orgs[0])
+            }
+          } else if (orgs.length > 0) {
+            setSelectedOrg(orgs[0])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch organizations:', error)
+      } finally {
+        setLoading(false)
       }
-    } else {
-      // Default to first org if nothing stored
-      setSelectedOrg(ORGANIZATIONS[0])
     }
+    fetchOrganizations()
   }, [])
 
   const selectOrg = (org: Organization) => {
@@ -58,9 +87,10 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   return (
     <OrganizationContext.Provider
       value={{
-        organizations: ORGANIZATIONS,
+        organizations,
         selectedOrg,
-        selectOrg
+        selectOrg,
+        loading
       }}
     >
       {children}

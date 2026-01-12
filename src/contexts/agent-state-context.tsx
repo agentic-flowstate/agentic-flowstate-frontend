@@ -14,7 +14,7 @@ interface RunningAgentInfo {
   ticketId: string
   epicId: string
   sliceId: string
-  agentType: AgentType
+  agentType: AgentType | string  // Can be string for legacy types
   startedAt: string
 }
 

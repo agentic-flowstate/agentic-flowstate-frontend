@@ -1,9 +1,11 @@
 "use client"
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Loader2, Terminal, MessageSquare, AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Circle, Wrench } from 'lucide-react'
+import { X, Loader2, AlertCircle, CheckCircle2, Mail, Send, FileText, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -13,15 +15,18 @@ import {
 import {
   streamAgentRunStructured,
   reconnectAgentStream,
+  sendMessageToAgent,
   getAgentTypeInfo,
+  getAgentTypeDisplayInfo,
+  createDraft,
   type AgentType,
+  type AgentRun,
   type StreamEvent,
-  type ToolResultEvent,
   type ReplayCompleteEvent,
 } from '@/lib/api/agents'
 import { Ticket } from '@/lib/types'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { useAgentStream, type MessageBlock } from '@/hooks/useAgentStream'
+import { MessageRenderer } from '@/components/message-renderer'
 
 interface AgentRunModalProps {
   isOpen: boolean
@@ -33,55 +38,123 @@ interface AgentRunModalProps {
   autoStart?: boolean  // Only start agent if explicitly requested
   onStart?: () => void
   onComplete?: () => void
+  agentRuns?: AgentRun[]  // For email agent: available runs to select as context
 }
 
-interface ToolCall {
-  id: string
-  name: string
-  input: Record<string, unknown>
-  result?: string
-  isError?: boolean
-  isExpanded: boolean
-  status: 'pending' | 'running' | 'completed' | 'error'
+// Parse structured email from agent text output
+interface ParsedEmail {
+  to: string
+  cc?: string
+  subject: string
+  body: string
+  notes?: string
 }
 
-interface MessageBlock {
-  type: 'text' | 'tool_calls' | 'thinking' | 'status'
-  content?: string
-  toolCalls?: ToolCall[]
-  status?: string
-  message?: string
-  toolsCollapsed?: boolean  // Track collapsed state for tool_calls blocks
-}
+function parseEmailFromText(text: string): ParsedEmail | null {
+  // Look for <email> tags
+  const emailMatch = text.match(/<email>([\s\S]*?)<\/email>/i)
+  if (!emailMatch) return null
 
-// Helper to format tool results for display
-function formatToolResult(result: string | undefined, toolName: string): string {
-  if (result === undefined) return ''
-  if (result === '') return '(empty response)'
+  const emailContent = emailMatch[1]
 
-  // Try to parse as JSON for better formatting
-  try {
-    const parsed = JSON.parse(result)
-    // Handle common tool result structures
-    if (typeof parsed === 'object' && parsed !== null) {
-      // WebSearch results
-      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.title) {
-        return parsed.map((r: { title?: string; url?: string; snippet?: string }) =>
-          `• ${r.title || 'No title'}\n  ${r.url || ''}\n  ${r.snippet || ''}`
-        ).join('\n\n')
-      }
-      // Grep/Glob file results
-      if (Array.isArray(parsed) && parsed.every((f: unknown) => typeof f === 'string')) {
-        return parsed.join('\n')
-      }
-      // Generic object - pretty print
-      return JSON.stringify(parsed, null, 2)
-    }
-  } catch {
-    // Not JSON, return as-is
+  // Extract to (required)
+  const toMatch = emailContent.match(/<to>([\s\S]*?)<\/to>/i)
+  if (!toMatch) return null
+
+  // Extract cc (optional)
+  const ccMatch = emailContent.match(/<cc>([\s\S]*?)<\/cc>/i)
+
+  // Extract subject
+  const subjectMatch = emailContent.match(/<subject>([\s\S]*?)<\/subject>/i)
+  if (!subjectMatch) return null
+
+  // Extract body
+  const bodyMatch = emailContent.match(/<body>([\s\S]*?)<\/body>/i)
+  if (!bodyMatch) return null
+
+  // Extract notes (optional, outside email tag)
+  const notesMatch = text.match(/<notes>([\s\S]*?)<\/notes>/i)
+
+  return {
+    to: toMatch[1].trim(),
+    cc: ccMatch ? ccMatch[1].trim() : undefined,
+    subject: subjectMatch[1].trim(),
+    body: bodyMatch[1].trim(),
+    notes: notesMatch ? notesMatch[1].trim() : undefined,
   }
+}
 
-  return result
+// Email display component with save as draft button
+function EmailDisplay({
+  email,
+  onSaveDraft,
+  isSaving,
+  isSaved
+}: {
+  email: ParsedEmail
+  onSaveDraft?: () => void
+  isSaving?: boolean
+  isSaved?: boolean
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Save as Draft button */}
+      {onSaveDraft && (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant={isSaved ? "default" : "outline"}
+            onClick={onSaveDraft}
+            disabled={isSaving || isSaved}
+            className={cn("gap-2", isSaved && "bg-green-600 hover:bg-green-600 text-white")}
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isSaved ? (
+              <Check className="h-4 w-4" />
+            ) : (
+              <FileText className="h-4 w-4" />
+            )}
+            {isSaving ? 'Saving...' : isSaved ? 'Saved to Drafts' : 'Save as Draft'}
+          </Button>
+        </div>
+      )}
+
+      {/* To */}
+      <div className="bg-muted/50 rounded-lg p-4 border border-border">
+        <div className="text-xs font-medium text-muted-foreground mb-1">TO</div>
+        <div className="text-sm font-medium text-foreground">{email.to}</div>
+      </div>
+
+      {/* CC */}
+      {email.cc && (
+        <div className="bg-muted/50 rounded-lg p-4 border border-border">
+          <div className="text-xs font-medium text-muted-foreground mb-1">CC</div>
+          <div className="text-sm text-foreground">{email.cc}</div>
+        </div>
+      )}
+
+      {/* Subject */}
+      <div className="bg-muted/50 rounded-lg p-4 border border-border">
+        <div className="text-xs font-medium text-muted-foreground mb-1">SUBJECT</div>
+        <div className="text-sm font-medium text-foreground">{email.subject}</div>
+      </div>
+
+      {/* Body */}
+      <div className="bg-muted/50 rounded-lg p-4 border border-border">
+        <div className="text-xs font-medium text-muted-foreground mb-2">BODY</div>
+        <div className="text-sm text-foreground whitespace-pre-wrap">{email.body}</div>
+      </div>
+
+      {/* Notes */}
+      {email.notes && (
+        <div className="bg-cyan-500/10 rounded-lg p-4 border border-cyan-500/20">
+          <div className="text-xs font-medium text-cyan-500 mb-1">NOTES</div>
+          <div className="text-sm text-muted-foreground">{email.notes}</div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export function AgentRunModal({
@@ -94,45 +167,66 @@ export function AgentRunModal({
   autoStart = false,
   onStart,
   onComplete,
+  agentRuns = [],
 }: AgentRunModalProps) {
-  const [isRunning, setIsRunning] = useState(false)
-  const [isReconnecting, setIsReconnecting] = useState(false)
-  const [messages, setMessages] = useState<MessageBlock[]>([])
-  const [currentStatus, setCurrentStatus] = useState<string>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const scrollRef = useRef<HTMLDivElement>(null)
+  // Use the shared hook
+  const {
+    messages,
+    status,
+    error,
+    sessionId,
+    isRunning,
+    isReconnecting,
+    processEvent,
+    processBufferedEvents,
+    addUserMessage,
+    reset,
+    setStatus,
+    setError,
+    setSessionId,
+    setIsRunning,
+    setIsReconnecting,
+    finalizeAllTools,
+    toggleToolExpanded,
+    toggleToolsCollapsed,
+    scrollRef,
+    userScrolledRef,
+    handleScroll,
+  } = useAgentStream()
+
   const hasStartedRef = useRef(false)
   const hasReconnectedRef = useRef(false)
   const hasCompletedRef = useRef(false)
-  const userScrolledRef = useRef(false)
-  const lastScrollTopRef = useRef(0)
 
-  // Track user scroll to avoid auto-scrolling when user is reading
-  const handleScroll = useCallback(() => {
-    if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
-      userScrolledRef.current = !isNearBottom
-      lastScrollTopRef.current = scrollTop
-    }
-  }, [])
+  // Email agent specific state
+  const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+  const [savedEmailKeys, setSavedEmailKeys] = useState<Set<string>>(new Set())
+
+  // Completed runs available for context selection (email agent)
+  const completedRuns = agentRuns.filter(run => run.status === 'completed' && run.agent_type !== 'email')
+
+  // Check if email agent has completed initial generation (for showing chat input)
+  const isEmailAgent = agentType === 'email'
+  const hasCompletedInitialGeneration = isEmailAgent && status === 'completed' && messages.length > 0
 
   // Auto-scroll to bottom only if user hasn't scrolled away
   useEffect(() => {
     if (scrollRef.current && !userScrolledRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, scrollRef, userScrolledRef])
 
   // Only auto-start when explicitly requested via autoStart prop
-  // This prevents re-runs during hot reload or when reopening modal
-  // IMPORTANT: Don't start if we have a reconnectSessionId - that means we're reconnecting, not starting fresh
   useEffect(() => {
     if (isOpen && autoStart && ticket && agentType && !isRunning && !hasStartedRef.current && !reconnectSessionId) {
       hasStartedRef.current = true
       startAgent()
     }
-  }, [isOpen, autoStart, ticket, agentType, reconnectSessionId])
+  }, [isOpen, autoStart, ticket, agentType, reconnectSessionId, isRunning])
 
   // Handle reconnection when reconnectSessionId is provided
   useEffect(() => {
@@ -140,64 +234,80 @@ export function AgentRunModal({
       hasReconnectedRef.current = true
       reconnectToAgent(reconnectSessionId)
     }
-  }, [isOpen, reconnectSessionId])
+  }, [isOpen, reconnectSessionId, isReconnecting])
 
-  // Reset refs when modal closes so next open works correctly
+  // Reset refs and email state when modal closes
   useEffect(() => {
     if (!isOpen) {
       hasStartedRef.current = false
       hasReconnectedRef.current = false
+      setSelectedSessionIds([])
+      setChatInput('')
     }
   }, [isOpen])
 
-  // Helper to finalize all running tools - called on completion or result event
-  const finalizeAllTools = useCallback(() => {
-    setMessages(prev => prev.map(block => {
-      if (block.type === 'tool_calls' && block.toolCalls) {
-        return {
-          ...block,
-          toolCalls: block.toolCalls.map(tc =>
-            tc.status === 'running'
-              ? { ...tc, status: 'completed' as const, result: tc.result ?? '(no output returned)' }
-              : tc
-          )
-        }
-      }
-      return block
-    }))
+  // Toggle session selection for context (email agent)
+  const toggleSessionSelection = useCallback((sid: string) => {
+    setSelectedSessionIds(prev =>
+      prev.includes(sid)
+        ? prev.filter(id => id !== sid)
+        : [...prev, sid]
+    )
   }, [])
 
+  // Generate a unique key for an email to track if it's been saved
+  const getEmailKey = useCallback((email: ParsedEmail) => {
+    return `${email.to}|${email.subject}|${email.body.slice(0, 100)}`
+  }, [])
+
+  // Save current email as draft
+  const handleSaveDraft = useCallback(async (email: ParsedEmail) => {
+    if (!ticket) return
+
+    const emailKey = getEmailKey(email)
+    setIsSavingDraft(true)
+    try {
+      const sid = sessionId || reconnectSessionId
+      await createDraft({
+        session_id: sid ?? undefined,
+        ticket_id: ticket.ticket_id,
+        epic_id: ticket.epic_id,
+        slice_id: ticket.slice_id,
+        to_address: email.to,
+        cc_address: email.cc,
+        subject: email.subject,
+        body: email.body,
+        notes: email.notes,
+      })
+      setSavedEmailKeys(prev => new Set(prev).add(emailKey))
+    } catch (err) {
+      console.error('Failed to save draft:', err)
+    } finally {
+      setIsSavingDraft(false)
+    }
+  }, [ticket, sessionId, reconnectSessionId, getEmailKey])
+
   // Reconnect to an existing agent run to fetch stored output
-  // Buffers all events until replay_complete is received, then processes them all at once
-  const reconnectToAgent = async (sessionId: string) => {
+  const reconnectToAgent = async (sid: string) => {
     setIsReconnecting(true)
-    setMessages([])
-    setError(null)
-    setCurrentStatus('reconnecting')
+    reset()
+    setStatus('reconnecting')
     userScrolledRef.current = false
     hasCompletedRef.current = false
-
-    // Add a status message to show we're loading
-    setMessages([{
-      type: 'status',
-      status: 'reconnecting',
-      message: 'Loading agent output...'
-    }])
 
     // Buffer events until we receive replay_complete
     const eventBuffer: StreamEvent[] = []
     let replayComplete: ReplayCompleteEvent | null = null
 
     await reconnectAgentStream(
-      sessionId,
+      sid,
       (event: StreamEvent) => {
         if (event.type === 'replay_complete') {
-          // Store the replay complete event and process all buffered events
           replayComplete = event as ReplayCompleteEvent
           processBufferedEvents(eventBuffer, replayComplete)
         } else if (replayComplete) {
           // After replay_complete, process events immediately (live events)
-          processLiveEvent(event)
+          processEvent(event)
         } else {
           // Before replay_complete, buffer all events
           eventBuffer.push(event)
@@ -209,16 +319,16 @@ export function AgentRunModal({
         if (!replayComplete && eventBuffer.length > 0) {
           processBufferedEvents(eventBuffer, null)
         }
-        if (!hasCompletedRef.current && currentStatus !== 'running') {
+        if (!hasCompletedRef.current && status !== 'running') {
           hasCompletedRef.current = true
-          setCurrentStatus('completed')
+          setStatus('completed')
           onComplete?.()
         }
       },
       (err) => {
         setIsReconnecting(false)
         setError(err.message)
-        setCurrentStatus('failed')
+        setStatus('failed')
         if (!hasCompletedRef.current) {
           hasCompletedRef.current = true
           onComplete?.()
@@ -227,246 +337,12 @@ export function AgentRunModal({
     )
   }
 
-  // Process all buffered events at once after replay is complete
-  // Since tool_result events aren't emitted by cc-sdk, we determine tool status by:
-  // - If agent is completed: all tools are completed
-  // - If agent is running: only the LAST tool_use (with no subsequent events) is running
-  const processBufferedEvents = (events: StreamEvent[], replayInfo: ReplayCompleteEvent | null) => {
-    // Determine if agent is still running
-    const agentStillRunning = replayInfo?.agent_status === 'running'
-
-    // Find the last tool_use event index - only this one might still be running
-    let lastToolUseId: string | null = null
-    for (let i = events.length - 1; i >= 0; i--) {
-      const event = events[i]
-      if (event.type === 'tool_use') {
-        lastToolUseId = event.id
-        break
-      }
-      // If we see text/thinking after tools, all tools are done
-      if (event.type === 'text' || event.type === 'thinking') {
-        break
-      }
-    }
-
-    // Build a set of tool_use_ids that have explicit results (rare but handle it)
-    const toolResults = new Set<string>()
-    for (const event of events) {
-      if (event.type === 'tool_result') {
-        toolResults.add((event as ToolResultEvent).tool_use_id)
-      }
-    }
-
-    // Build message blocks from buffered events
-    const newMessages: MessageBlock[] = []
-
-    for (const event of events) {
-      switch (event.type) {
-        case 'text':
-          const lastText = newMessages[newMessages.length - 1]
-          if (lastText?.type === 'text') {
-            lastText.content = (lastText.content || '') + event.content
-          } else {
-            newMessages.push({ type: 'text', content: event.content })
-          }
-          break
-
-        case 'tool_use': {
-          // Tool is running only if: agent is running AND this is the last tool AND no result exists
-          const hasResult = toolResults.has(event.id)
-          const isLastTool = event.id === lastToolUseId
-          const status: ToolCall['status'] = hasResult
-            ? 'completed'
-            : (agentStillRunning && isLastTool ? 'running' : 'completed')
-
-          const toolCall: ToolCall = {
-            id: event.id,
-            name: event.name,
-            input: event.input,
-            isExpanded: false,
-            status,
-          }
-          const lastTools = newMessages[newMessages.length - 1]
-          if (lastTools?.type === 'tool_calls') {
-            lastTools.toolCalls = [...(lastTools.toolCalls || []), toolCall]
-            lastTools.toolsCollapsed = true
-          } else {
-            newMessages.push({ type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true })
-          }
-          break
-        }
-
-        case 'tool_result': {
-          const resultEvent = event as ToolResultEvent
-          // Find and update the tool with this result
-          for (const block of newMessages) {
-            if (block.type === 'tool_calls' && block.toolCalls) {
-              for (const tc of block.toolCalls) {
-                if (tc.id === resultEvent.tool_use_id) {
-                  tc.result = resultEvent.content || '(empty response)'
-                  tc.isError = resultEvent.is_error
-                  tc.status = resultEvent.is_error ? 'error' : 'completed'
-                }
-              }
-            }
-          }
-          break
-        }
-
-        case 'thinking':
-          newMessages.push({ type: 'thinking', content: event.content })
-          break
-
-        case 'status':
-          // Don't add status messages during replay, just update current status
-          if (event.status !== 'reconnecting') {
-            setCurrentStatus(event.status)
-          }
-          break
-
-        case 'result':
-          setCurrentStatus(event.is_error ? 'failed' : 'completed')
-          setIsReconnecting(false)
-          if (!hasCompletedRef.current) {
-            hasCompletedRef.current = true
-            onComplete?.()
-          }
-          break
-      }
-    }
-
-    // Set all messages at once
-    setMessages(newMessages)
-
-    // Update status based on replay info
-    if (replayInfo) {
-      setCurrentStatus(replayInfo.agent_status)
-      if (replayInfo.agent_status !== 'running') {
-        setIsReconnecting(false)
-        if (!hasCompletedRef.current) {
-          hasCompletedRef.current = true
-          onComplete?.()
-        }
-      }
-    }
-  }
-
-  // Process a single live event (after replay is complete)
-  const processLiveEvent = (event: StreamEvent) => {
-    // Helper to mark all running tools as completed (tool results aren't streamed from CLI)
-    const markToolsCompleted = (blocks: MessageBlock[]): MessageBlock[] => {
-      return blocks.map(block => {
-        if (block.type === 'tool_calls' && block.toolCalls) {
-          const hasRunning = block.toolCalls.some(tc => tc.status === 'running')
-          if (hasRunning) {
-            return {
-              ...block,
-              toolCalls: block.toolCalls.map(tc =>
-                tc.status === 'running'
-                  ? { ...tc, status: 'completed' as const }
-                  : tc
-              )
-            }
-          }
-        }
-        return block
-      })
-    }
-
-    switch (event.type) {
-      case 'text':
-        setMessages(prev => {
-          // Mark any running tools as completed - text after tools means they finished
-          const updated = markToolsCompleted(prev)
-          const last = updated[updated.length - 1]
-          if (last?.type === 'text') {
-            return [
-              ...updated.slice(0, -1),
-              { ...last, content: (last.content || '') + event.content }
-            ]
-          }
-          return [...updated, { type: 'text', content: event.content }]
-        })
-        break
-
-      case 'tool_use': {
-        const toolCall: ToolCall = {
-          id: event.id,
-          name: event.name,
-          input: event.input,
-          isExpanded: false,
-          status: 'running',
-        }
-        setMessages(prev => {
-          // Mark previous running tools as completed before adding new one
-          const updated = markToolsCompleted(prev)
-          const last = updated[updated.length - 1]
-          if (last?.type === 'tool_calls') {
-            return [
-              ...updated.slice(0, -1),
-              { ...last, toolCalls: [...(last.toolCalls || []), toolCall], toolsCollapsed: true }
-            ]
-          }
-          return [...updated, { type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true }]
-        })
-        break
-      }
-
-      case 'tool_result': {
-        const resultEvent = event as ToolResultEvent
-        setMessages(prev => {
-          return prev.map(block => {
-            if (block.type === 'tool_calls' && block.toolCalls) {
-              return {
-                ...block,
-                toolCalls: block.toolCalls.map(tc =>
-                  tc.id === resultEvent.tool_use_id
-                    ? {
-                        ...tc,
-                        result: resultEvent.content || '(empty response)',
-                        isError: resultEvent.is_error,
-                        status: resultEvent.is_error ? 'error' as const : 'completed' as const
-                      }
-                    : tc
-                )
-              }
-            }
-            return block
-          })
-        })
-        break
-      }
-
-      case 'thinking':
-        setMessages(prev => [...prev, { type: 'thinking', content: event.content }])
-        break
-
-      case 'status':
-        setCurrentStatus(event.status)
-        if (event.message && event.status !== 'running') {
-          setMessages(prev => [...prev, { type: 'status', status: event.status, message: event.message }])
-        }
-        break
-
-      case 'result':
-        finalizeAllTools()
-        setCurrentStatus(event.is_error ? 'failed' : 'completed')
-        setIsReconnecting(false)
-        if (!hasCompletedRef.current) {
-          hasCompletedRef.current = true
-          onComplete?.()
-        }
-        break
-    }
-  }
-
   const startAgent = async () => {
     if (!ticket || !agentType) return
 
     setIsRunning(true)
-    setMessages([])
-    setError(null)
-    setCurrentStatus('starting')
+    reset()
+    setStatus('starting')
     userScrolledRef.current = false
     hasCompletedRef.current = false
     onStart?.()
@@ -478,118 +354,25 @@ export function AgentRunModal({
       agentType,
       previousSessionId,
       (event: StreamEvent) => {
-        // Helper to mark all running tools as completed (tool results aren't streamed from CLI)
-        const markToolsCompleted = (blocks: MessageBlock[]): MessageBlock[] => {
-          return blocks.map(block => {
-            if (block.type === 'tool_calls' && block.toolCalls) {
-              const hasRunning = block.toolCalls.some(tc => tc.status === 'running')
-              if (hasRunning) {
-                return {
-                  ...block,
-                  toolCalls: block.toolCalls.map(tc =>
-                    tc.status === 'running'
-                      ? { ...tc, status: 'completed' as const }
-                      : tc
-                  )
-                }
-              }
-            }
-            return block
-          })
+        // Capture session ID from result event for follow-up messages
+        if (event.type === 'result' && 'session_id' in event) {
+          setSessionId(event.session_id)
         }
+        processEvent(event)
 
-        switch (event.type) {
-          case 'text':
-            setMessages(prev => {
-              // Mark any running tools as completed - text after tools means they finished
-              const updated = markToolsCompleted(prev)
-              // Append to last text block or create new one
-              const last = updated[updated.length - 1]
-              if (last?.type === 'text') {
-                return [
-                  ...updated.slice(0, -1),
-                  { ...last, content: (last.content || '') + event.content }
-                ]
-              }
-              return [...updated, { type: 'text', content: event.content }]
-            })
-            break
-
-          case 'tool_use':
-            const toolCall: ToolCall = {
-              id: event.id,
-              name: event.name,
-              input: event.input,
-              isExpanded: false,
-              status: 'running',
-            }
-            setMessages(prev => {
-              // Mark previous running tools as completed before adding new one
-              const updated = markToolsCompleted(prev)
-              // Add to existing tool_calls block or create new one
-              const last = updated[updated.length - 1]
-              if (last?.type === 'tool_calls') {
-                return [
-                  ...updated.slice(0, -1),
-                  { ...last, toolCalls: [...(last.toolCalls || []), toolCall], toolsCollapsed: true }
-                ]
-              }
-              return [...updated, { type: 'tool_calls', toolCalls: [toolCall], toolsCollapsed: true }]
-            })
-            break
-
-          case 'tool_result':
-            const resultEvent = event as ToolResultEvent
-            setMessages(prev => {
-              return prev.map(block => {
-                if (block.type === 'tool_calls' && block.toolCalls) {
-                  return {
-                    ...block,
-                    toolCalls: block.toolCalls.map(tc =>
-                      tc.id === resultEvent.tool_use_id
-                        ? {
-                            ...tc,
-                            result: resultEvent.content || '(empty response)',
-                            isError: resultEvent.is_error,
-                            status: resultEvent.is_error ? 'error' as const : 'completed' as const
-                          }
-                        : tc
-                    )
-                  }
-                }
-                return block
-              })
-            })
-            break
-
-          case 'thinking':
-            setMessages(prev => [...prev, { type: 'thinking', content: event.content }])
-            break
-
-          case 'status':
-            setCurrentStatus(event.status)
-            if (event.message) {
-              setMessages(prev => [...prev, { type: 'status', status: event.status, message: event.message }])
-            }
-            break
-
-          case 'result':
-            // Finalize all tools when result is received
-            finalizeAllTools()
-            setCurrentStatus(event.is_error ? 'failed' : 'completed')
-            setIsRunning(false)
-            if (!hasCompletedRef.current) {
-              hasCompletedRef.current = true
-              onComplete?.()
-            }
-            break
+        // Handle completion
+        if (event.type === 'result') {
+          setIsRunning(false)
+          if (!hasCompletedRef.current) {
+            hasCompletedRef.current = true
+            onComplete?.()
+          }
         }
       },
       () => {
-        // Stream complete - ensure all tools are finalized
         finalizeAllTools()
         setIsRunning(false)
-        setCurrentStatus('completed')
+        setStatus('completed')
         if (!hasCompletedRef.current) {
           hasCompletedRef.current = true
           onComplete?.()
@@ -599,65 +382,57 @@ export function AgentRunModal({
         finalizeAllTools()
         setIsRunning(false)
         setError(err.message)
-        setCurrentStatus('failed')
+        setStatus('failed')
         if (!hasCompletedRef.current) {
           hasCompletedRef.current = true
           onComplete?.()
         }
+      },
+      isEmailAgent ? selectedSessionIds : undefined
+    )
+  }
+
+  // Send follow-up message to refine email (email agent only)
+  const handleSendMessage = async () => {
+    const sid = sessionId || reconnectSessionId
+    if (!sid || !chatInput.trim() || isSendingMessage) return
+
+    const messageText = chatInput.trim()
+    setChatInput('')
+    setIsSendingMessage(true)
+    setStatus('running')
+
+    // Add user message to display
+    addUserMessage(messageText)
+
+    await sendMessageToAgent(
+      sid,
+      messageText,
+      (event: StreamEvent) => {
+        processEvent(event)
+      },
+      () => {
+        finalizeAllTools()
+        setIsSendingMessage(false)
+        setStatus('completed')
+      },
+      (err) => {
+        finalizeAllTools()
+        setIsSendingMessage(false)
+        setError(err.message)
+        setStatus('failed')
       }
     )
   }
 
-  // Toggle individual tool expansion - preserves scroll position
-  const toggleToolExpanded = useCallback((blockIndex: number, toolId: string) => {
-    const scrollTop = scrollRef.current?.scrollTop ?? 0
-    setMessages(prev => prev.map((block, i) => {
-      if (i === blockIndex && block.type === 'tool_calls' && block.toolCalls) {
-        return {
-          ...block,
-          toolCalls: block.toolCalls.map(tc =>
-            tc.id === toolId ? { ...tc, isExpanded: !tc.isExpanded } : tc
-          )
-        }
-      }
-      return block
-    }))
-    // Restore scroll position after state update
-    requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollTop
-      }
-    })
-  }, [])
-
-  // Toggle entire tool block collapsed/expanded - preserves scroll position
-  const toggleToolsCollapsed = useCallback((blockIndex: number) => {
-    const scrollTop = scrollRef.current?.scrollTop ?? 0
-    setMessages(prev => prev.map((block, i) => {
-      if (i === blockIndex && block.type === 'tool_calls') {
-        return {
-          ...block,
-          toolsCollapsed: !block.toolsCollapsed
-        }
-      }
-      return block
-    }))
-    // Restore scroll position after state update
-    requestAnimationFrame(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollTop
-      }
-    })
-  }, [])
-
   const agentInfo = agentType ? getAgentTypeInfo(agentType) : null
 
   // Determine the final status for display
-  const displayStatus = isRunning ? 'running' : isReconnecting ? 'reconnecting' : currentStatus
+  const displayStatus = isRunning ? 'running' : isReconnecting ? 'reconnecting' : status
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0 [&>button]:hidden">
+      <DialogContent className="max-w-4xl h-[80vh] max-md:h-[100dvh] max-md:max-h-[100dvh] max-md:w-full max-md:max-w-full max-md:rounded-none max-md:translate-y-0 max-md:top-0 flex flex-col p-0 gap-0 [&>button]:hidden">
         {/* Header */}
         <DialogHeader className="px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between gap-4">
@@ -714,12 +489,79 @@ export function AgentRunModal({
           )}
         </DialogHeader>
 
+        {/* Context selector for email agent - shown before agent starts */}
+        {isEmailAgent && !isRunning && !isReconnecting && status === 'idle' && (
+          <div className="px-6 py-4 border-b border-border shrink-0 bg-muted/30">
+            {completedRuns.length > 0 ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <Mail className="h-4 w-4 text-cyan-500" />
+                  <span className="text-sm font-medium">Include context from previous agents</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {completedRuns.map((run) => {
+                    const displayInfo = getAgentTypeDisplayInfo(run.agent_type)
+                    const isSelected = selectedSessionIds.includes(run.session_id)
+                    return (
+                      <Badge
+                        key={run.session_id}
+                        variant={isSelected ? "default" : "outline"}
+                        className={cn(
+                          "cursor-pointer transition-colors",
+                          isSelected && "bg-cyan-500 hover:bg-cyan-600"
+                        )}
+                        onClick={() => toggleSessionSelection(run.session_id)}
+                      >
+                        <span className={cn(!isSelected && displayInfo.color)}>
+                          {displayInfo.label}
+                        </span>
+                        <span className="ml-1.5 text-[10px] opacity-70">
+                          {new Date(run.started_at).toLocaleDateString()}
+                        </span>
+                      </Badge>
+                    )
+                  })}
+                </div>
+                {selectedSessionIds.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {selectedSessionIds.length} context{selectedSessionIds.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No completed research to include. The email will be generated based on the ticket intent only.
+              </p>
+            )}
+            <Button
+              className="mt-4 w-full bg-cyan-500 hover:bg-cyan-600"
+              onClick={startAgent}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Generate Email
+            </Button>
+          </div>
+        )}
+
         {/* Content */}
-        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6 space-y-4">
-          {messages.length === 0 && (isRunning || isReconnecting || currentStatus === 'running') && (
+        <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-4">
+          {messages.length === 0 && (isRunning || isReconnecting || status === 'running') && (
             <div className="flex items-center justify-center h-32 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
               {isReconnecting ? 'Loading agent output...' : 'Waiting for agent output...'}
+            </div>
+          )}
+
+          {messages.length === 0 && !isRunning && !isReconnecting && status !== 'running' && status !== 'idle' && !error && (
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertCircle className="h-4 w-4" />
+                Failed to Load Agent Output
+              </div>
+              <p className="mt-1 text-sm">No events were received from the server. Check browser console for debug logs.</p>
+              <p className="mt-2 text-xs font-mono bg-red-500/10 p-2 rounded">
+                Status: {status} | Session: {reconnectSessionId || 'none'}
+              </p>
             </div>
           )}
 
@@ -733,204 +575,65 @@ export function AgentRunModal({
             </div>
           )}
 
-          {messages.map((block, blockIndex) => (
-            <div key={blockIndex}>
-              {block.type === 'text' && block.content && (
-                <div className="prose prose-sm dark:prose-invert max-w-none">
-                  <div className="flex items-start gap-3">
-                    <MessageSquare className="h-4 w-4 mt-1 text-blue-500 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-lg font-semibold mt-3 mb-2">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-base font-medium mt-2 mb-1">{children}</h3>,
-                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                          li: ({ children }) => <li className="text-sm">{children}</li>,
-                          code: ({ className, children }) => {
-                            const isInline = !className
-                            return isInline ? (
-                              <code className="bg-muted px-1 py-0.5 rounded text-sm font-mono">{children}</code>
-                            ) : (
-                              <code className="block bg-muted p-3 rounded text-sm font-mono overflow-x-auto my-2">{children}</code>
-                            )
-                          },
-                          pre: ({ children }) => <pre className="bg-muted p-3 rounded overflow-x-auto my-2">{children}</pre>,
-                          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                          a: ({ href, children }) => <a href={href} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>,
-                          blockquote: ({ children }) => <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic my-2">{children}</blockquote>,
-                        }}
-                      >
-                        {block.content}
-                      </ReactMarkdown>
-                    </div>
-                  </div>
-                </div>
-              )}
+          <MessageRenderer
+            messages={messages}
+            onToggleToolExpanded={toggleToolExpanded}
+            onToggleToolsCollapsed={toggleToolsCollapsed}
+            isLoading={isRunning || isReconnecting}
+            loadingMessage={isReconnecting ? 'Loading agent output...' : 'Waiting for agent output...'}
+            renderTextBlock={isEmailAgent ? (block: MessageBlock) => {
+              if (!block.content) return null
+              const parsedEmail = parseEmailFromText(block.content)
+              if (parsedEmail) {
+                const emailKey = getEmailKey(parsedEmail)
+                return (
+                  <EmailDisplay
+                    email={parsedEmail}
+                    onSaveDraft={() => handleSaveDraft(parsedEmail)}
+                    isSaving={isSavingDraft}
+                    isSaved={savedEmailKeys.has(emailKey)}
+                  />
+                )
+              }
+              return null // Use default rendering
+            } : undefined}
+          />
+        </div>
 
-              {block.type === 'tool_calls' && block.toolCalls && (
-                <div className="space-y-2">
-                  {/* Collapsible toggle for entire tool block */}
-                  <button
-                    onClick={() => toggleToolsCollapsed(blockIndex)}
-                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
-                  >
-                    {block.toolsCollapsed ? (
-                      <ChevronRight className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                    <Wrench className="h-4 w-4" />
-                    <span>
-                      {block.toolsCollapsed ? 'Show' : 'Hide'} tool calls ({block.toolCalls.length})
-                    </span>
-                    {/* Show status summary when collapsed */}
-                    {block.toolsCollapsed && (
-                      <span className="ml-2 flex items-center gap-1">
-                        {block.toolCalls.some(t => t.status === 'running') && (
-                          <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
-                        )}
-                        {block.toolCalls.some(t => t.status === 'error') && (
-                          <AlertCircle className="h-3 w-3 text-red-500" />
-                        )}
-                        {block.toolCalls.every(t => t.status === 'completed') && (
-                          <CheckCircle2 className="h-3 w-3 text-green-500" />
-                        )}
-                      </span>
-                    )}
-                  </button>
-
-                  {/* Individual tool calls - only shown when not collapsed */}
-                  {!block.toolsCollapsed && block.toolCalls.map((tool) => (
-                    <div
-                      key={tool.id}
-                      className={cn(
-                        "border rounded-lg overflow-hidden transition-colors ml-6",
-                        tool.status === 'running' ? "border-blue-500/50 bg-blue-500/5" :
-                        tool.status === 'error' ? "border-red-500/30" :
-                        tool.status === 'completed' ? "border-border" : "border-border"
-                      )}
-                    >
-                      {/* Tool header */}
-                      <button
-                        onClick={() => toggleToolExpanded(blockIndex, tool.id)}
-                        className={cn(
-                          "w-full px-3 py-2 flex items-center gap-2 hover:bg-muted/70 transition-colors",
-                          tool.status === 'running' ? "bg-blue-500/10" : "bg-muted/50"
-                        )}
-                      >
-                        {tool.isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        {/* Status indicator */}
-                        {tool.status === 'running' && (
-                          <Loader2 className="h-4 w-4 animate-spin text-blue-500 shrink-0" />
-                        )}
-                        {tool.status === 'completed' && (
-                          <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                        )}
-                        {tool.status === 'error' && (
-                          <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />
-                        )}
-                        {tool.status === 'pending' && (
-                          <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
-                        )}
-                        <Terminal className="h-4 w-4 text-purple-500 shrink-0" />
-                        <span className="font-mono text-sm font-medium truncate">{tool.name}</span>
-                        {/* Right side status text */}
-                        <span className={cn(
-                          "ml-auto text-xs shrink-0",
-                          tool.status === 'running' ? "text-blue-500" :
-                          tool.status === 'error' ? "text-red-500" :
-                          tool.status === 'completed' ? "text-green-500" : "text-muted-foreground"
-                        )}>
-                          {tool.status === 'running' && 'Running...'}
-                          {tool.status === 'completed' && 'Done'}
-                          {tool.status === 'error' && 'Error'}
-                          {tool.status === 'pending' && 'Pending'}
-                        </span>
-                      </button>
-
-                      {/* Tool details */}
-                      {tool.isExpanded && (
-                        <div className="border-t border-border">
-                          {/* Input */}
-                          <div className="p-3 border-b border-border">
-                            <div className="text-xs font-medium text-muted-foreground mb-1">Input</div>
-                            <pre className="text-xs bg-muted/30 p-2 rounded overflow-x-auto max-h-48">
-                              {JSON.stringify(tool.input, null, 2)}
-                            </pre>
-                          </div>
-
-                          {/* Result */}
-                          <div className="p-3">
-                            <div className={cn(
-                              "text-xs font-medium mb-1",
-                              tool.status === 'error' ? "text-red-500" :
-                              tool.status === 'running' ? "text-blue-500" : "text-muted-foreground"
-                            )}>
-                              {tool.status === 'error' ? 'Error' :
-                               tool.status === 'running' ? 'Output' : 'Result'}
-                            </div>
-                            {tool.status === 'running' && (
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                Executing...
-                              </div>
-                            )}
-                            {tool.result !== undefined && (
-                              <pre className={cn(
-                                "text-xs p-2 rounded overflow-x-auto max-h-64 whitespace-pre-wrap break-words",
-                                tool.status === 'error' ? "bg-red-500/10" : "bg-muted/30"
-                              )}>
-                                {formatToolResult(tool.result, tool.name)}
-                              </pre>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {block.type === 'thinking' && block.content && (
-                <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                  <div className="text-xs font-medium text-yellow-600 dark:text-yellow-400 mb-1">
-                    Thinking
-                  </div>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {block.content}
-                  </p>
-                </div>
-              )}
-
-              {block.type === 'status' && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="h-px flex-1 bg-border" />
-                  <span>{block.message || block.status}</span>
-                  <div className="h-px flex-1 bg-border" />
-                </div>
-              )}
+        {/* Chat input for email agent follow-up messages */}
+        {isEmailAgent && (hasCompletedInitialGeneration || status === 'completed') && (
+          <div className="px-6 py-4 border-t border-border shrink-0 bg-background">
+            <div className="flex gap-2">
+              <Textarea
+                ref={chatInputRef}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Refine the email... (e.g., 'Make it more formal')"
+                className="min-h-[60px] max-h-[120px] resize-none"
+                disabled={isSendingMessage || isRunning}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSendMessage()
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                className="h-[60px] w-[60px] shrink-0"
+                onClick={handleSendMessage}
+                disabled={!chatInput.trim() || isSendingMessage || isRunning}
+              >
+                {isSendingMessage ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
+              </Button>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-border shrink-0 flex justify-end gap-2">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            disabled={isRunning || isReconnecting}
-          >
-            {isRunning ? 'Running...' : isReconnecting ? 'Loading...' : 'Close'}
-          </Button>
-        </div>
       </DialogContent>
     </Dialog>
   )
