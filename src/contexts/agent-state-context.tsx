@@ -39,6 +39,9 @@ interface AgentStateContextType {
 
   // Refresh running agents from backend for multiple tickets
   refreshRunningAgents: (tickets: { epicId: string, sliceId: string, ticketId: string }[]) => Promise<void>
+
+  // Clear stale running state if pipeline shows agent completed
+  clearIfPipelineCompleted: (ticketId: string, pipelineSteps: { agent_type: string, status: string, agent_run_id?: string }[]) => void
 }
 
 const AgentStateContext = createContext<AgentStateContextType | undefined>(undefined)
@@ -131,6 +134,34 @@ export function AgentStateProvider({ children }: { children: React.ReactNode }) 
     )
   }, [checkForActiveAgent])
 
+  // Clear stale running state if pipeline shows the CURRENT agent run is no longer running.
+  // We compare agent_run_id to avoid clearing when stale pipeline data still shows a previous
+  // run's "failed" status while a new run is actually in progress.
+  const clearIfPipelineCompleted = useCallback((
+    ticketId: string,
+    pipelineSteps: { agent_type: string, status: string, agent_run_id?: string }[]
+  ) => {
+    const runningAgent = runningAgents.get(ticketId)
+    if (!runningAgent) return
+
+    // Find the step for the supposedly running agent
+    const step = pipelineSteps.find(s => s.agent_type === runningAgent.agentType)
+    if (!step) return
+
+    // Only clear if this step's agent_run_id matches the session we're tracking.
+    // If the IDs don't match, the step status is from a previous run and we should
+    // NOT clear the running state for the current run.
+    const idsMatch = step.agent_run_id && step.agent_run_id === runningAgent.sessionId
+
+    if (idsMatch && (step.status === 'completed' || step.status === 'failed')) {
+      setRunningAgents(prev => {
+        const next = new Map(prev)
+        next.delete(ticketId)
+        return next
+      })
+    }
+  }, [runningAgents])
+
   const value: AgentStateContextType = {
     runningAgents,
     isAgentRunning,
@@ -139,6 +170,7 @@ export function AgentStateProvider({ children }: { children: React.ReactNode }) 
     markAgentCompleted,
     checkForActiveAgent,
     refreshRunningAgents,
+    clearIfPipelineCompleted,
   }
 
   return (
