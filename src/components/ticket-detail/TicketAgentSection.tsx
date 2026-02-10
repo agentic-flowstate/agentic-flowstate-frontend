@@ -194,18 +194,22 @@ export function TicketAgentSection({
                       </span>
                     </div>
                     {step.status === 'failed' || step.status === 'skipped' ? (
-                      <button
+                      <span
+                        role="button"
+                        tabIndex={0}
                         className={cn(
-                          "shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/50 transition-colors",
+                          "shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/50 transition-colors cursor-pointer",
                           smallTextSize,
-                          step.status === 'failed' ? "text-red-500" : "text-muted-foreground"
+                          step.status === 'failed' ? "text-red-500" : "text-muted-foreground",
+                          (retryingStepId === step.step_id || isAgentRunning) && "opacity-50 pointer-events-none"
                         )}
                         onClick={async (e) => {
                           e.stopPropagation()
+                          e.preventDefault()
+                          if (retryingStepId || isAgentRunning) return
                           setRetryingStepId(step.step_id)
                           try { await onRetryStep(step.step_id) } finally { setRetryingStepId(null) }
                         }}
-                        disabled={retryingStepId === step.step_id || isAgentRunning}
                       >
                         {retryingStepId === step.step_id ? (
                           <Loader2 className={cn(iconSize, "animate-spin")} />
@@ -213,7 +217,7 @@ export function TicketAgentSection({
                           <RotateCcw className={iconSize} />
                         )}
                         Retry
-                      </button>
+                      </span>
                     ) : statusInfo ? (
                       <span className={cn(smallTextSize, statusInfo.color, "shrink-0")}>{statusInfo.label}</span>
                     ) : null}
@@ -233,18 +237,22 @@ export function TicketAgentSection({
                         <Badge variant="secondary" className={cn(smallTextSize, "py-0 px-1")}>manual</Badge>
                       )}
                       {step.status === 'failed' || step.status === 'skipped' ? (
-                        <button
+                        <span
+                          role="button"
+                          tabIndex={0}
                           className={cn(
-                            "ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/50 transition-colors",
+                            "ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/50 transition-colors cursor-pointer",
                             smallTextSize,
-                            step.status === 'failed' ? "text-red-500" : "text-muted-foreground"
+                            step.status === 'failed' ? "text-red-500" : "text-muted-foreground",
+                            (retryingStepId === step.step_id || isAgentRunning) && "opacity-50 pointer-events-none"
                           )}
                           onClick={async (e) => {
                             e.stopPropagation()
+                            e.preventDefault()
+                            if (retryingStepId || isAgentRunning) return
                             setRetryingStepId(step.step_id)
                             try { await onRetryStep(step.step_id) } finally { setRetryingStepId(null) }
                           }}
-                          disabled={retryingStepId === step.step_id || isAgentRunning}
                         >
                           {retryingStepId === step.step_id ? (
                             <Loader2 className={cn(iconSize, "animate-spin")} />
@@ -252,7 +260,7 @@ export function TicketAgentSection({
                             <RotateCcw className={iconSize} />
                           )}
                           Retry
-                        </button>
+                        </span>
                       ) : statusInfo ? (
                         <span className={cn("ml-auto", smallTextSize, statusInfo.color)}>{statusInfo.label}</span>
                       ) : null}
