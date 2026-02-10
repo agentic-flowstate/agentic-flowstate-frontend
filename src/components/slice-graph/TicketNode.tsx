@@ -5,6 +5,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import type { GraphTicket, PipelineStep } from '@/lib/types'
 import { getAgentIcon, getCrossSliceDependencies } from './utils'
 import { cn } from '@/lib/utils'
+import { Flag } from 'lucide-react'
 
 interface TicketNodeData {
   ticket: GraphTicket
@@ -12,6 +13,8 @@ interface TicketNodeData {
   status: 'completed' | 'in-progress' | 'blocked' | 'queued'
   allTickets?: GraphTicket[]
   onCrossSliceClick?: (ticketId: string, sliceId: string) => void
+  isSelected?: boolean
+  isProcessing?: boolean
 }
 
 function StepDot({ step }: { step: PipelineStep }) {
@@ -21,9 +24,10 @@ function StepDot({ step }: { step: PipelineStep }) {
     awaiting_approval: 'bg-amber-800 border-amber-500 animate-pulse',
     queued: 'bg-zinc-800 border-zinc-600',
     failed: 'bg-red-800 border-red-500',
+    skipped: 'bg-zinc-700 border-zinc-500 opacity-50',
   }
 
-  const typeClasses = step.step_type === 'manual' ? 'border-dashed' : 'border-solid'
+  const typeClasses = step.execution_type === 'manual' ? 'border-dashed' : 'border-solid'
 
   return (
     <div
@@ -40,9 +44,10 @@ function StepDot({ step }: { step: PipelineStep }) {
 }
 
 function TicketNodeComponent({ data }: NodeProps<TicketNodeData>) {
-  const { ticket, status, allTickets, onCrossSliceClick } = data
+  const { ticket, status, allTickets, onCrossSliceClick, isSelected, isProcessing } = data
   const steps = ticket.pipeline?.steps || []
-  const blockedBy = ticket.blocked_by_tickets || []
+  const blockedBy = ticket.blocked_by || []
+  const isMilestone = ticket.ticket_type === 'milestone'
 
   // Check for cross-slice dependencies
   const crossSliceDeps = allTickets
@@ -56,6 +61,14 @@ function TicketNodeComponent({ data }: NodeProps<TicketNodeData>) {
     queued: 'border-zinc-700 opacity-70',
   }
 
+  // Milestone-specific status classes - use purple/violet theme
+  const milestoneStatusClasses = {
+    completed: 'border-violet-600 bg-gradient-to-br from-violet-950/40 to-zinc-900',
+    'in-progress': 'border-violet-500 bg-gradient-to-br from-violet-900/40 to-zinc-900',
+    blocked: 'border-red-600 bg-gradient-to-br from-red-950/30 to-violet-950/20',
+    queued: 'border-violet-700/60 bg-gradient-to-br from-violet-950/20 to-zinc-900 opacity-80',
+  }
+
   const statusBadgeClasses = {
     completed: 'bg-green-800 text-green-400',
     'in-progress': 'bg-blue-800 text-blue-400',
@@ -63,61 +76,127 @@ function TicketNodeComponent({ data }: NodeProps<TicketNodeData>) {
     queued: 'bg-zinc-800 text-zinc-500',
   }
 
-  return (
-    <div className={cn('ticket-node bg-zinc-900 border-2 rounded-lg p-3.5 w-[200px] text-zinc-200', statusClasses[status])}>
-      <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-zinc-600" />
+  // Milestone badge classes
+  const milestoneStatusBadgeClasses = {
+    completed: 'bg-violet-800 text-violet-300',
+    'in-progress': 'bg-violet-700 text-violet-300',
+    blocked: 'bg-red-800 text-red-400',
+    queued: 'bg-violet-900 text-violet-400',
+  }
 
-      {/* Ticket ID */}
-      <div className="font-mono text-[9px] text-zinc-500 mb-1">{ticket.ticket_id}</div>
+  // Render milestone as a diamond-shaped node
+  if (isMilestone) {
+    return (
+      <div className={cn(
+        'ticket-node-wrapper relative',
+        isProcessing && 'ticket-processing-border',
+        isSelected && 'ticket-selected-glow'
+      )}>
+        {/* Diamond container */}
+        <div className="relative w-[180px] h-[180px] flex items-center justify-center">
+          {/* Diamond shape background */}
+          <div className={cn(
+            'absolute w-[130px] h-[130px] rotate-45 border-2 rounded-lg',
+            isProcessing ? 'border-transparent' : milestoneStatusClasses[status],
+            isSelected && !isProcessing && 'border-amber-400/80'
+          )} />
 
-      {/* Title */}
-      <div className="text-xs font-semibold leading-tight mb-2.5 line-clamp-2">{ticket.title}</div>
+          {/* Content container (not rotated) */}
+          <div className="relative z-10 w-[120px] text-center px-2">
+            <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-violet-500" />
 
-      {/* Pipeline mini progress */}
-      {steps.length > 0 && (
-        <div className="flex gap-1 mb-2.5 flex-wrap">
-          {steps.map((step, i) => (
-            <StepDot key={i} step={step} />
-          ))}
-        </div>
-      )}
+            {/* Milestone icon */}
+            <div className="flex items-center justify-center mb-1">
+              <Flag className="w-4 h-4 text-violet-400" />
+            </div>
 
-      {/* Meta row */}
-      <div className="flex justify-between items-center">
-        <span className="text-[9px] text-zinc-500">
-          {blockedBy.length > 0
-            ? `← ${blockedBy.length} dep${blockedBy.length > 1 ? 's' : ''}`
-            : 'No deps'}
-        </span>
-        <span
-          className={cn('text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase', statusBadgeClasses[status])}
-        >
-          {status.replace('-', ' ')}
-        </span>
-      </div>
+            {/* Title */}
+            <div className="text-[11px] font-bold leading-tight text-violet-200 line-clamp-2 mb-1">
+              {ticket.title}
+            </div>
 
-      {/* Cross-slice dependency badges */}
-      {crossSliceDeps.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-zinc-800">
-          <div className="flex flex-wrap gap-1">
-            {crossSliceDeps.map((dep) => (
-              <button
-                key={dep.ticketId}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCrossSliceClick?.(dep.ticketId, dep.sliceId)
-                }}
-                className="text-[8px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-700 hover:bg-amber-800/50 transition-colors"
-                title={`Blocked by ${dep.ticketId} (different slice)`}
+            {/* Status badge */}
+            <div className="flex justify-center">
+              <span
+                className={cn('text-[8px] px-1.5 py-0.5 rounded font-semibold uppercase', milestoneStatusBadgeClasses[status])}
               >
-                ⚠ {dep.ticketId.slice(-6)}
-              </button>
-            ))}
+                {status.replace('-', ' ')}
+              </span>
+            </div>
+
+            <Handle type="source" position={Position.Bottom} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-violet-500" />
           </div>
         </div>
-      )}
+      </div>
+    )
+  }
 
-      <Handle type="source" position={Position.Bottom} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-zinc-600" />
+  // Regular task node
+  return (
+    <div className={cn(
+      'ticket-node-wrapper relative',
+      isProcessing && 'ticket-processing-border',
+      isSelected && 'ticket-selected-glow'
+    )}>
+      <div className={cn(
+        'ticket-node bg-zinc-900 border-2 rounded-lg p-3.5 w-[200px] text-zinc-200 relative',
+        isProcessing ? 'border-transparent' : statusClasses[status],
+        isSelected && !isProcessing && 'border-amber-400/80'
+      )}>
+        <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-zinc-600" />
+
+        {/* Ticket ID */}
+        <div className="font-mono text-[9px] text-zinc-500 mb-1">{ticket.ticket_id}</div>
+
+        {/* Title */}
+        <div className="text-xs font-semibold leading-tight mb-2.5 line-clamp-2">{ticket.title}</div>
+
+        {/* Pipeline mini progress */}
+        {steps.length > 0 && (
+          <div className="flex gap-1 mb-2.5 flex-wrap">
+            {steps.map((step, i) => (
+              <StepDot key={i} step={step} />
+            ))}
+          </div>
+        )}
+
+        {/* Meta row */}
+        <div className="flex justify-between items-center">
+          <span className="text-[9px] text-zinc-500">
+            {blockedBy.length > 0
+              ? `← ${blockedBy.length} dep${blockedBy.length > 1 ? 's' : ''}`
+              : 'No deps'}
+          </span>
+          <span
+            className={cn('text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase', statusBadgeClasses[status])}
+          >
+            {status.replace('-', ' ')}
+          </span>
+        </div>
+
+        {/* Cross-slice dependency badges */}
+        {crossSliceDeps.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-zinc-800">
+            <div className="flex flex-wrap gap-1">
+              {crossSliceDeps.map((dep) => (
+                <button
+                  key={dep.ticketId}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onCrossSliceClick?.(dep.ticketId, dep.sliceId)
+                  }}
+                  className="text-[8px] px-1.5 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-700 hover:bg-amber-800/50 transition-colors"
+                  title={`Blocked by ${dep.ticketId} (different slice)`}
+                >
+                  ⚠ {dep.ticketId.slice(-6)}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Handle type="source" position={Position.Bottom} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-zinc-600" />
+      </div>
     </div>
   )
 }

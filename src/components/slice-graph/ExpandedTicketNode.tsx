@@ -28,6 +28,7 @@ function StepRow({
     awaiting_approval: 'bg-amber-800 border-amber-500 animate-pulse cursor-pointer hover:bg-amber-700',
     queued: 'bg-zinc-800 border-zinc-600',
     failed: 'bg-red-800 border-red-500',
+    skipped: 'bg-zinc-700 border-zinc-500 opacity-50',
   }
 
   const statusTextClasses = {
@@ -36,6 +37,7 @@ function StepRow({
     awaiting_approval: 'text-amber-400',
     queued: 'text-zinc-500',
     failed: 'text-red-400',
+    skipped: 'text-zinc-500',
   }
 
   const statusLabels = {
@@ -44,9 +46,10 @@ function StepRow({
     awaiting_approval: '⏳ Awaiting',
     queued: '○ Queued',
     failed: '✗ Failed',
+    skipped: '⊘ Skipped',
   }
 
-  const typeClasses = step.step_type === 'manual' ? 'border-dashed' : 'border-solid'
+  const typeClasses = step.execution_type === 'manual' ? 'border-dashed' : 'border-solid'
   const isClickable = step.status === 'awaiting_approval'
 
   return (
@@ -69,7 +72,7 @@ function StepRow({
       <div className="flex-1 min-w-0">
         <div className="text-[11px] font-semibold text-zinc-200 truncate">
           {getAgentName(step.agent_type)}
-          {step.step_type === 'manual' && (
+          {step.execution_type === 'manual' && (
             <span className="ml-1 text-[9px] text-amber-400">(manual)</span>
           )}
         </div>
@@ -84,7 +87,7 @@ function StepRow({
 function ExpandedTicketNodeComponent({ data }: NodeProps<ExpandedTicketNodeData>) {
   const { ticket, status, allTickets, onStepClick, onCrossSliceClick } = data
   const steps = ticket.pipeline?.steps || []
-  const blockedBy = ticket.blocked_by_tickets || []
+  const blockedBy = ticket.blocked_by || []
 
   const crossSliceDeps = allTickets
     ? getCrossSliceDependencies(ticket, allTickets)
@@ -97,12 +100,26 @@ function ExpandedTicketNodeComponent({ data }: NodeProps<ExpandedTicketNodeData>
     queued: 'bg-zinc-800 text-zinc-500',
   }
 
+  const statusNodeClasses = {
+    completed: 'border-green-800',
+    'in-progress': 'border-blue-700',
+    blocked: 'border-red-800',
+    queued: 'border-zinc-700',
+  }
+
+  const statusHeaderClasses = {
+    completed: 'bg-gradient-to-br from-green-950/40 to-transparent',
+    'in-progress': 'bg-gradient-to-br from-blue-950/40 to-transparent',
+    blocked: 'bg-gradient-to-br from-red-950/40 to-transparent',
+    queued: 'bg-gradient-to-br from-zinc-900/40 to-transparent',
+  }
+
   return (
-    <div className="ticket-expanded bg-zinc-900 border-2 border-blue-700 rounded-xl w-[280px] overflow-hidden">
+    <div className={cn("ticket-expanded bg-zinc-900 border-2 rounded-xl w-[280px] overflow-hidden", statusNodeClasses[status])}>
       <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-zinc-600" />
 
       {/* Header */}
-      <div className="p-3 border-b border-zinc-800 bg-gradient-to-br from-blue-950/40 to-transparent">
+      <div className={cn("p-3 border-b border-zinc-800", statusHeaderClasses[status])}>
         <div className="font-mono text-[9px] text-zinc-500 mb-1">{ticket.ticket_id}</div>
         <div className="text-xs font-semibold text-zinc-200 leading-tight mb-2">{ticket.title}</div>
         <div className="flex justify-between items-center">
