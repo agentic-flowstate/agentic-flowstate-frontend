@@ -1,7 +1,7 @@
 "use client"
 
-import React from 'react'
-import { X, FileText } from 'lucide-react'
+import React, { useState } from 'react'
+import { X, FileText, Copy, Check } from 'lucide-react'
 import { Ticket } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,6 +13,24 @@ import { TicketRelationships } from './TicketRelationships'
 import { TicketMetadata } from './TicketMetadata'
 import { TicketHistory } from './TicketHistory'
 import { TicketGuidanceSection } from './TicketGuidanceSection'
+
+function CopyTicketId({ ticketId }: { ticketId: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+      onClick={() => {
+        navigator.clipboard.writeText(ticketId)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      title="Copy ticket ID"
+    >
+      {ticketId}
+      {copied ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+    </button>
+  )
+}
 
 export interface TicketDetailProps {
   ticket: Ticket | null
@@ -68,7 +86,7 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
         {/* Header */}
         <div className="h-14 border-b border-border flex items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-mono text-muted-foreground">{ticket.ticket_id}</span>
+            <CopyTicketId ticketId={ticket.ticket_id} />
             <span className="text-xs text-muted-foreground">•</span>
             <span className={cn(
               "text-xs font-medium",

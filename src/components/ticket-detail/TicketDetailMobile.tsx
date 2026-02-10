@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useEffect } from 'react'
-import { X, ArrowLeft, FileText } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { X, ArrowLeft, FileText, Copy, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { AgentRunModal } from '@/components/agent-run-modal'
@@ -12,6 +12,24 @@ import { TicketRelationships } from './TicketRelationships'
 import { TicketMetadata } from './TicketMetadata'
 import { TicketHistory } from './TicketHistory'
 import { TicketDetailProps } from './TicketDrawer'
+
+function CopyTicketId({ ticketId }: { ticketId: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+      onClick={() => {
+        navigator.clipboard.writeText(ticketId)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      }}
+      title="Copy ticket ID"
+    >
+      {ticketId}
+      {copied ? <Check className="h-2.5 w-2.5 text-green-500" /> : <Copy className="h-2.5 w-2.5" />}
+    </button>
+  )
+}
 
 export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, onAgentRunChange, onTicketUpdate }: TicketDetailProps) {
   const {
@@ -71,7 +89,7 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex flex-col">
-              <span className="text-[10px] font-mono text-muted-foreground">{ticket.ticket_id}</span>
+              <CopyTicketId ticketId={ticket.ticket_id} />
               <span className={cn(
                 "text-xs font-medium",
                 ticket.status === 'completed' && "text-green-500",
