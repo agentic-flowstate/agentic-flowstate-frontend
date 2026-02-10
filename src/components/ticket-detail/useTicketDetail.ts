@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Ticket } from '@/lib/types'
 import { updateTicketNotes, getTicketById } from '@/lib/api/tickets'
-import { runPipeline } from '@/lib/api/pipelines'
+import { runPipeline, retryPipelineStep } from '@/lib/api/pipelines'
 import {
   getAgentRuns,
   isValidAgentType,
@@ -62,6 +62,7 @@ export interface UseTicketDetailReturn {
   // Handlers
   handleRunAgent: (agentType: AgentType) => void
   handleRunPipeline: () => Promise<void>
+  handleRetryStep: (stepId: string) => Promise<void>
   handleModalClose: () => void
   handleAgentStart: () => void
   handleModalComplete: () => void
@@ -396,6 +397,40 @@ export function useTicketDetail({
     }
   }, [ticket, onTicketUpdate, markAgentStarted])
 
+  const handleRetryStep = useCallback(async (stepId: string) => {
+    if (!ticket) return
+
+    try {
+      const result = await retryPipelineStep(ticket.ticket_id, stepId)
+
+      // If a new agent was auto-started, track it
+      if (result.session_id) {
+        const step = ticket.pipeline?.steps?.find(s => s.step_id === stepId)
+        if (step) {
+          markAgentStarted({
+            sessionId: result.session_id,
+            ticketId: ticket.ticket_id,
+            epicId: ticket.epic_id,
+            sliceId: ticket.slice_id,
+            agentType: step.agent_type,
+            startedAt: new Date().toISOString(),
+          })
+        }
+      }
+
+      // Refresh ticket to get updated pipeline state
+      const updatedTicket = await getTicketById(ticket.ticket_id)
+      if (updatedTicket) {
+        onTicketUpdate?.(updatedTicket)
+      }
+
+      // Reload agent runs (old ones were cleaned up by the backend)
+      await reloadAgentRuns()
+    } catch (error) {
+      console.error('Failed to retry pipeline step:', error)
+    }
+  }, [ticket, onTicketUpdate, markAgentStarted, reloadAgentRuns])
+
   const handleModalClose = useCallback(() => {
     setIsModalOpen(false)
     onAgentRunChange?.(null)
@@ -509,6 +544,7 @@ export function useTicketDetail({
     // Handlers
     handleRunAgent,
     handleRunPipeline,
+    handleRetryStep,
     handleModalClose,
     handleAgentStart,
     handleModalComplete,

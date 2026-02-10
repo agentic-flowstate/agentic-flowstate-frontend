@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react'
-import { Bot, Play, Loader2, Check, History, Clock, GitBranch, CircleDot, CircleCheck, CirclePause, CircleX, Circle } from 'lucide-react'
+import { Bot, Play, Loader2, Check, History, Clock, GitBranch, CircleDot, CircleCheck, CirclePause, CircleX, Circle, RotateCcw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -65,6 +65,7 @@ export interface TicketAgentSectionProps {
   archivedRuns: AgentRun[]
   onRunAgent: (agentType: AgentType) => void
   onRunPipeline: () => Promise<void>
+  onRetryStep: (stepId: string) => Promise<void>
   onViewArchivedRun: (run: AgentRun) => void
   variant?: 'desktop' | 'mobile'
 }
@@ -79,10 +80,12 @@ export function TicketAgentSection({
   archivedRuns,
   onRunAgent,
   onRunPipeline,
+  onRetryStep,
   onViewArchivedRun,
   variant = 'desktop',
 }: TicketAgentSectionProps) {
   const [isPipelineStarting, setIsPipelineStarting] = useState(false)
+  const [retryingStepId, setRetryingStepId] = useState<string | null>(null)
   const isMobile = variant === 'mobile'
   const iconSize = isMobile ? 'h-4 w-4' : 'h-3 w-3'
   const largeIconSize = isMobile ? 'h-5 w-5' : 'h-3 w-3'
@@ -190,9 +193,30 @@ export function TicketAgentSection({
                         {isThisRunning ? 'Tap to view output' : step.status === 'completed' ? 'Tap to view results' : step.agent_type}
                       </span>
                     </div>
-                    {statusInfo && (
+                    {step.status === 'failed' || step.status === 'skipped' ? (
+                      <button
+                        className={cn(
+                          "shrink-0 flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/50 transition-colors",
+                          smallTextSize,
+                          step.status === 'failed' ? "text-red-500" : "text-muted-foreground"
+                        )}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          setRetryingStepId(step.step_id)
+                          try { await onRetryStep(step.step_id) } finally { setRetryingStepId(null) }
+                        }}
+                        disabled={retryingStepId === step.step_id || isAgentRunning}
+                      >
+                        {retryingStepId === step.step_id ? (
+                          <Loader2 className={cn(iconSize, "animate-spin")} />
+                        ) : (
+                          <RotateCcw className={iconSize} />
+                        )}
+                        Retry
+                      </button>
+                    ) : statusInfo ? (
                       <span className={cn(smallTextSize, statusInfo.color, "shrink-0")}>{statusInfo.label}</span>
-                    )}
+                    ) : null}
                   </>
                 ) : (
                   // Desktop layout - vertical
@@ -208,9 +232,30 @@ export function TicketAgentSection({
                       {isManual && (
                         <Badge variant="secondary" className={cn(smallTextSize, "py-0 px-1")}>manual</Badge>
                       )}
-                      {statusInfo && (
+                      {step.status === 'failed' || step.status === 'skipped' ? (
+                        <button
+                          className={cn(
+                            "ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted/50 transition-colors",
+                            smallTextSize,
+                            step.status === 'failed' ? "text-red-500" : "text-muted-foreground"
+                          )}
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            setRetryingStepId(step.step_id)
+                            try { await onRetryStep(step.step_id) } finally { setRetryingStepId(null) }
+                          }}
+                          disabled={retryingStepId === step.step_id || isAgentRunning}
+                        >
+                          {retryingStepId === step.step_id ? (
+                            <Loader2 className={cn(iconSize, "animate-spin")} />
+                          ) : (
+                            <RotateCcw className={iconSize} />
+                          )}
+                          Retry
+                        </button>
+                      ) : statusInfo ? (
                         <span className={cn("ml-auto", smallTextSize, statusInfo.color)}>{statusInfo.label}</span>
-                      )}
+                      ) : null}
                     </div>
                     <span className={cn(smallTextSize, "text-muted-foreground font-normal")}>
                       {isThisRunning ? 'Click to view output' : step.status === 'completed' ? 'Click to view results' : step.agent_type}

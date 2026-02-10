@@ -13,7 +13,7 @@ import { TicketMetadata } from './TicketMetadata'
 import { TicketHistory } from './TicketHistory'
 import { TicketDetailProps } from './TicketDrawer'
 
-export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, onAgentRunChange }: TicketDetailProps) {
+export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, onAgentRunChange, onTicketUpdate }: TicketDetailProps) {
   const {
     notes,
     setNotes,
@@ -33,12 +33,14 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
     shouldAutoStart,
     reconnectSessionId,
     handleRunAgent,
+    handleRunPipeline,
+    handleRetryStep,
     handleModalClose,
     handleAgentStart,
     handleModalComplete,
     handleViewArchivedRun,
     handleHistoryRunClick,
-  } = useTicketDetail({ ticket, isOpen, activeAgentRun, onAgentRunChange })
+  } = useTicketDetail({ ticket, isOpen, activeAgentRun, onAgentRunChange, onTicketUpdate })
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -97,52 +99,36 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
             {/* Title */}
             <div>
               <h2 className="text-lg font-semibold text-foreground mb-2">{ticket.title}</h2>
-              {ticket.type && ticket.type !== 'task' && (
-                <span className="inline-block px-2 py-1 bg-muted border border-border rounded text-xs text-muted-foreground">
-                  {ticket.type}
-                </span>
-              )}
             </div>
 
-            {/* Intent */}
-            {ticket.intent && (
+            {/* Description */}
+            {ticket.description && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium text-muted-foreground">INTENT</span>
+                  <span className="text-sm font-medium text-muted-foreground">DESCRIPTION</span>
                 </div>
-                <p className="text-sm text-foreground">{ticket.intent}</p>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{ticket.description}</p>
               </div>
             )}
 
             {/* Agent Runs Section */}
             <TicketAgentSection
               agentTypes={agentTypes}
+              pipeline={ticket.pipeline}
               isAgentRunning={isAgentRunning}
               modalAgentType={modalAgentType}
               isCheckingActiveAgent={isCheckingActiveAgent}
               completedAgentTypes={completedAgentTypes}
               archivedRuns={archivedRuns}
               onRunAgent={handleRunAgent}
+              onRunPipeline={handleRunPipeline}
+              onRetryStep={handleRetryStep}
               onViewArchivedRun={handleViewArchivedRun}
               variant="mobile"
             />
 
             {/* Notes */}
-            <TicketNotesSection
-              notes={notes}
-              isEditing={isEditingNotes}
-              isSaving={isSavingNotes}
-              onNotesChange={setNotes}
-              onEdit={() => setIsEditingNotes(true)}
-              onSave={handleSaveNotes}
-              onCancel={() => {
-                setNotes(ticket.notes || '')
-                setIsEditingNotes(false)
-              }}
-              variant="mobile"
-            />
-
             {/* Relationships */}
             <TicketRelationships ticket={ticket} variant="mobile" />
 

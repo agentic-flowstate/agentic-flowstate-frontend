@@ -23,6 +23,7 @@ async function callAPI<T>(path: string, options?: RequestInit): Promise<T> {
 
     const response = await fetch(path, {
       ...options,
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         'X-Organization': currentOrg || 'telemetryops',
@@ -114,6 +115,29 @@ export async function rejectStep(
       method: 'POST',
       body: JSON.stringify({ feedback })
     }
+  )
+}
+
+/**
+ * Start pipeline execution in the background (no modal/streaming)
+ */
+export async function runPipeline(ticketId: string): Promise<{ started: boolean; message: string; session_id?: string }> {
+  return callAPI(`/api/tickets/${encodeURIComponent(ticketId)}/pipeline/run`, {
+    method: 'POST',
+  })
+}
+
+/**
+ * Retry a failed or skipped pipeline step.
+ * Resets the step to queued, un-skips downstream steps, cleans up old runs, and auto-starts.
+ */
+export async function retryPipelineStep(
+  ticketId: string,
+  stepId: string
+): Promise<{ step: unknown; pipeline_status: string; session_id?: string; retried: boolean }> {
+  return callAPI(
+    `/api/tickets/${encodeURIComponent(ticketId)}/pipeline/steps/${encodeURIComponent(stepId)}/retry`,
+    { method: 'POST' }
   )
 }
 
