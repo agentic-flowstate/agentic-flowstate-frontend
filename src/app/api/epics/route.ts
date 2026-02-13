@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Organization': organization || 'telemetryops',
+        'Cookie': request.headers.get('cookie') || '',
       }
     })
 
@@ -56,7 +58,9 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`${API_URL}/api/epics`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Organization': epicData.organization,
+        'Cookie': request.headers.get('cookie') || '',
       },
       body: JSON.stringify(epicData)
     })

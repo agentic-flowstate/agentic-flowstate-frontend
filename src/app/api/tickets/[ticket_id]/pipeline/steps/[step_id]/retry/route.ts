@@ -13,7 +13,12 @@ export async function POST(
 
     const response = await fetch(
       `${RUST_API_URL}/api/tickets/${encodeURIComponent(ticket_id)}/pipeline/steps/${encodeURIComponent(step_id)}/retry`,
-      { method: 'POST' }
+      {
+        method: 'POST',
+        headers: {
+          'Cookie': request.headers.get('cookie') || '',
+        },
+      }
     )
 
     if (!response.ok) {

@@ -9,25 +9,28 @@ import ReactFlow, {
   ReactFlowProvider,
   type NodeMouseHandler,
   type NodeTypes,
+  type Node,
+  type Edge,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
 import type { GraphTicket, PipelineStep, Slice } from '@/lib/types'
 import { TicketNode } from './TicketNode'
-import { ExpandedTicketNode } from './ExpandedTicketNode'
 import { getLayoutedElements } from './utils'
-import { Plus, Minus, Maximize, Lock, Unlock, Expand } from 'lucide-react'
+import { Plus, Minus, Maximize, Lock, Unlock } from 'lucide-react'
 
 const nodeTypes: NodeTypes = {
   ticket: TicketNode,
-  expandedTicket: ExpandedTicketNode,
 }
 
 interface SliceGraphProps {
   slice: Slice
   tickets: GraphTicket[]
   allTickets: GraphTicket[] // All tickets across slices for cross-slice dep detection
+  selectedTicketId?: string | null
+  processingTicketIds?: Set<string>
   onTicketClick?: (ticket: GraphTicket) => void
+  onPaneClick?: () => void // Called when clicking on empty canvas
   onStepClick?: (ticket: GraphTicket, step: PipelineStep) => void
   onCrossSliceClick?: (ticketId: string, sliceId: string) => void
 }
@@ -36,19 +39,33 @@ export function SliceGraph({
   slice,
   tickets,
   allTickets,
+  selectedTicketId,
+  processingTicketIds,
   onTicketClick,
+  onPaneClick,
   onStepClick,
   onCrossSliceClick,
 }: SliceGraphProps) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const expandedIds = new Set<string>()
 
-  // Calculate layout
-  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
-    () => getLayoutedElements(tickets, expandedIds, slice.slice_id),
-    [tickets, expandedIds, slice.slice_id]
-  )
+  const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([])
+  const [layoutedEdges, setLayoutedEdges] = useState<Edge[]>([])
 
-  // Add callbacks and allTickets reference to node data
+  // Async ELK layout
+  useEffect(() => {
+    let cancelled = false
+
+    getLayoutedElements(tickets, expandedIds, slice.slice_id).then(({ nodes, edges }) => {
+      if (!cancelled) {
+        setLayoutedNodes(nodes)
+        setLayoutedEdges(edges)
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [tickets, slice.slice_id])
+
+  // Add callbacks, allTickets reference, and selection/processing state to node data
   const nodesWithCallbacks = useMemo(
     () =>
       layoutedNodes.map((node) => ({
@@ -58,69 +75,38 @@ export function SliceGraph({
           allTickets,
           onStepClick,
           onCrossSliceClick,
+          isSelected: node.id === selectedTicketId,
+          isProcessing: processingTicketIds?.has(node.id) ?? false,
         },
       })),
-    [layoutedNodes, allTickets, onStepClick, onCrossSliceClick]
+    [layoutedNodes, allTickets, onStepClick, onCrossSliceClick, selectedTicketId, processingTicketIds]
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithCallbacks)
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges)
 
-  // Re-layout when dependencies change
+  // Sync React Flow state when layout or callbacks change
   useEffect(() => {
-    const { nodes: newNodes, edges: newEdges } = getLayoutedElements(
-      tickets,
-      expandedIds,
-      slice.slice_id
-    )
+    setNodes(nodesWithCallbacks)
+  }, [nodesWithCallbacks, setNodes])
 
-    // Add callbacks to new nodes
-    const nodesWithData = newNodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        allTickets,
-        onStepClick,
-        onCrossSliceClick,
-      },
-    }))
+  useEffect(() => {
+    setEdges(layoutedEdges)
+  }, [layoutedEdges, setEdges])
 
-    setNodes(nodesWithData)
-    setEdges(newEdges)
-  }, [tickets, expandedIds, slice.slice_id, allTickets, onStepClick, onCrossSliceClick, setNodes, setEdges])
-
-  // Toggle expand/collapse on node click
+  // Click on ticket - just open drawer
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
       const ticket = (node.data as { ticket: GraphTicket }).ticket
-
-      // Toggle expansion
-      setExpandedIds((prev) => {
-        const next = new Set(prev)
-        if (next.has(ticket.ticket_id)) {
-          next.delete(ticket.ticket_id)
-        } else {
-          next.add(ticket.ticket_id)
-        }
-        return next
-      })
-
-      // Also call the parent click handler
       onTicketClick?.(ticket)
     },
     [onTicketClick]
   )
 
-  const toggleExpandAll = useCallback(() => {
-    setExpandedIds((prev) => {
-      if (prev.size === tickets.length) {
-        return new Set()
-      }
-      return new Set(tickets.map((t) => t.ticket_id))
-    })
-  }, [tickets])
-
-  const allExpanded = expandedIds.size === tickets.length
+  // Click on empty pane - close drawer
+  const handlePaneClick = useCallback(() => {
+    onPaneClick?.()
+  }, [onPaneClick])
 
   const sliceTickets = tickets.filter((t) => t.slice_id === slice.slice_id)
 
@@ -143,9 +129,8 @@ export function SliceGraph({
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onPaneClick={handlePaneClick}
           nodeTypes={nodeTypes}
-          allExpanded={allExpanded}
-          onToggleExpand={toggleExpandAll}
         />
       </ReactFlowProvider>
     </div>
@@ -158,9 +143,8 @@ interface SliceGraphInnerProps {
   onNodesChange: ReturnType<typeof useNodesState>[2]
   onEdgesChange: ReturnType<typeof useEdgesState>[2]
   onNodeClick: NodeMouseHandler
+  onPaneClick: () => void
   nodeTypes: NodeTypes
-  allExpanded: boolean
-  onToggleExpand: () => void
 }
 
 function SliceGraphInner({
@@ -169,9 +153,8 @@ function SliceGraphInner({
   onNodesChange,
   onEdgesChange,
   onNodeClick,
+  onPaneClick,
   nodeTypes,
-  allExpanded,
-  onToggleExpand,
 }: SliceGraphInnerProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow()
   const [isLocked, setIsLocked] = useState(false)
@@ -195,11 +178,6 @@ function SliceGraphInner({
   const handleFitView = () => {
     flash('fitView')
     fitView({ padding: 0.2 })
-  }
-
-  const handleToggleExpand = () => {
-    flash('expand')
-    onToggleExpand()
   }
 
   const buttonClass = (id: string, isToggle = false, isActive = false) => {
@@ -232,6 +210,7 @@ function SliceGraphInner({
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={onNodeClick}
+      onPaneClick={onPaneClick}
       nodeTypes={nodeTypes}
       fitView
       fitViewOptions={{ padding: 0.2 }}
@@ -277,13 +256,6 @@ function SliceGraphInner({
           ) : (
             <Unlock className="w-4 h-4" strokeWidth={1.5} />
           )}
-        </button>
-        <button
-          onClick={handleToggleExpand}
-          title={allExpanded ? "Collapse all" : "Expand all"}
-          className={buttonClass('expand')}
-        >
-          <Expand className="w-4 h-4" strokeWidth={1.5} />
         </button>
       </div>
     </ReactFlow>

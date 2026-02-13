@@ -10,10 +10,17 @@ export async function GET(
   try {
     const params = await context.params
     const { epic_id } = params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
     // Call Rust API service to get all tickets for the epic
     const response = await fetch(
-      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/tickets`
+      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/tickets`,
+      {
+        headers: {
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        }
+      }
     )
 
     if (!response.ok) {

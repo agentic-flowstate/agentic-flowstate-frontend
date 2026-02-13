@@ -12,9 +12,9 @@ export interface TicketRelationshipsProps {
 
 export function TicketRelationships({ ticket, variant = 'desktop' }: TicketRelationshipsProps) {
   const hasRelationships =
-    (ticket.blocks_tickets && ticket.blocks_tickets.length > 0) ||
-    (ticket.blocked_by_tickets && ticket.blocked_by_tickets.length > 0) ||
-    (ticket.caused_by_tickets && ticket.caused_by_tickets.length > 0)
+    (ticket.blocks && ticket.blocks.length > 0) ||
+    (ticket.blocked_by && ticket.blocked_by.length > 0) ||
+    (ticket.caused_by && ticket.caused_by.length > 0)
 
   if (!hasRelationships) return null
 
@@ -34,11 +34,11 @@ export function TicketRelationships({ ticket, variant = 'desktop' }: TicketRelat
 
       <div className={spacing}>
         {/* Blocks */}
-        {ticket.blocks_tickets && ticket.blocks_tickets.length > 0 && (
+        {ticket.blocks && ticket.blocks.length > 0 && (
           <div>
             <div className={cn(textSize, "text-destructive mb-1", isMobile && "mb-2")}>Blocks</div>
             <div className={itemSpacing}>
-              {ticket.blocks_tickets.map((id) => (
+              {ticket.blocks.map((id) => (
                 <div
                   key={id}
                   className={cn(
@@ -55,11 +55,11 @@ export function TicketRelationships({ ticket, variant = 'desktop' }: TicketRelat
         )}
 
         {/* Blocked by */}
-        {ticket.blocked_by_tickets && ticket.blocked_by_tickets.length > 0 && (
+        {ticket.blocked_by && ticket.blocked_by.length > 0 && (
           <div>
             <div className={cn(textSize, "text-orange-500 mb-1", isMobile && "mb-2")}>Blocked by</div>
             <div className={itemSpacing}>
-              {ticket.blocked_by_tickets.map((id) => (
+              {ticket.blocked_by.map((id) => (
                 <div
                   key={id}
                   className={cn(
@@ -76,11 +76,11 @@ export function TicketRelationships({ ticket, variant = 'desktop' }: TicketRelat
         )}
 
         {/* Caused by */}
-        {ticket.caused_by_tickets && ticket.caused_by_tickets.length > 0 && (
+        {ticket.caused_by && ticket.caused_by.length > 0 && (
           <div>
             <div className={cn(textSize, "text-yellow-500 mb-1", isMobile && "mb-2")}>Caused by</div>
             <div className={itemSpacing}>
-              {ticket.caused_by_tickets.map((id) => (
+              {ticket.caused_by.map((id) => (
                 <div
                   key={id}
                   className={cn(

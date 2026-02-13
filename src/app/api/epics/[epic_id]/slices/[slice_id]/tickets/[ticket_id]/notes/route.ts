@@ -20,12 +20,18 @@ export async function PATCH(
       )
     }
 
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
+
     // Call Rust API service with nested path
     const response = await fetch(
       `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`,
       {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        },
         body: JSON.stringify({ notes })
       }
     )

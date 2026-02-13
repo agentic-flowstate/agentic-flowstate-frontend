@@ -55,6 +55,7 @@ export interface UseTicketDetailReturn {
   modalPreviousSessionId: string | undefined
   shouldAutoStart: boolean
   reconnectSessionId: string | undefined
+  modalStepId: string | undefined
 
   // Ticket Assistant state
   handleOpenAssistant: () => void
@@ -116,7 +117,7 @@ export function useTicketDetail({
   const [modalPreviousSessionId, setModalPreviousSessionId] = useState<string | undefined>(undefined)
   const [shouldAutoStart, setShouldAutoStart] = useState(false)
   const [reconnectSessionId, setReconnectSessionId] = useState<string | undefined>(undefined)
-
+  const [modalStepId, setModalStepId] = useState<string | undefined>(undefined)
 
   // Clear stale running state if pipeline shows agent is done
   // This must happen before deriving isAgentRunning to avoid flicker
@@ -316,6 +317,7 @@ export function useTicketDetail({
     // open modal to view its output — don't start a new run
     if (stepStatus === 'running' || isAgentRunning) {
       setModalAgentType(agentType)
+      setModalStepId(pipelineStep?.step_id)
       // Use the agent_run_id from the pipeline step if available
       if (pipelineStep?.agent_run_id) {
         setReconnectSessionId(pipelineStep.agent_run_id)
@@ -325,19 +327,23 @@ export function useTicketDetail({
       return
     }
 
-    // If pipeline step is completed, show results (don't auto-start)
+    // If pipeline step is completed, show results (never auto-start)
     if (stepStatus === 'completed') {
       const completedRun = agentRuns.find(
         run => run.agent_type === agentType && run.status === 'completed'
       )
-      if (completedRun) {
+      // Even if no completed agent_run found (e.g. after reset), use the
+      // pipeline step's agent_run_id as fallback — never fall through to auto-start
+      const sessionId = completedRun?.session_id ?? pipelineStep?.agent_run_id
+      if (sessionId) {
         setModalAgentType(agentType)
-        setReconnectSessionId(completedRun.session_id)
+        setModalStepId(pipelineStep?.step_id)
+        setReconnectSessionId(sessionId)
         setShouldAutoStart(false)
         setIsModalOpen(true)
-        onAgentRunChange?.(completedRun.session_id)
-        return
+        onAgentRunChange?.(sessionId)
       }
+      return
     }
 
     // Legacy check for completed agent types (for tickets without pipelines)
@@ -347,6 +353,7 @@ export function useTicketDetail({
       )
       if (completedRun) {
         setModalAgentType(agentType)
+        setModalStepId(undefined)
         setReconnectSessionId(completedRun.session_id)
         setShouldAutoStart(false)
         setIsModalOpen(true)
@@ -359,9 +366,13 @@ export function useTicketDetail({
       (run) => run.status === 'completed' && run.output_summary
     )
 
+    // Resolve step_id from pipeline for new runs
+    const resolvedStepId = pipelineStep?.step_id
+
     setModalAgentType(agentType)
     setModalPreviousSessionId(previousRun?.session_id)
     setReconnectSessionId(undefined)
+    setModalStepId(resolvedStepId)
     // Email agent: don't auto-start, let user select context first
     setShouldAutoStart(agentType !== 'email')
     setIsModalOpen(true)
@@ -537,6 +548,7 @@ export function useTicketDetail({
     modalPreviousSessionId,
     shouldAutoStart,
     reconnectSessionId,
+    modalStepId,
 
     // Ticket Assistant state
     handleOpenAssistant,

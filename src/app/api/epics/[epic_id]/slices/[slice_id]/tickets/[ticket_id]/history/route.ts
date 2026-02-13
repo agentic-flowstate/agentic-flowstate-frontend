@@ -20,9 +20,15 @@ export async function GET(
       url.searchParams.set('limit', limit)
     }
 
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
+
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Organization': organization,
+        'Cookie': request.headers.get('cookie') || '',
+      }
     })
 
     if (!response.ok) {

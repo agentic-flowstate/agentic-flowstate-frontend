@@ -10,10 +10,17 @@ export async function GET(
   try {
     const params = await context.params
     const { epic_id, slice_id } = params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
     // Call Rust API service
     const response = await fetch(
-      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets`
+      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets`,
+      {
+        headers: {
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        }
+      }
     )
 
     if (!response.ok) {
@@ -41,12 +48,18 @@ export async function POST(
     const { epic_id, slice_id } = params
     const body = await request.json()
 
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
+
     // Call Rust API service
     const response = await fetch(
       `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        },
         body: JSON.stringify(body)
       }
     )

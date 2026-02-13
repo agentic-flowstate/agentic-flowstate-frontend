@@ -16,6 +16,7 @@ export async function GET(
     const response = await fetch(`${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices`, {
       headers: {
         'X-Organization': organization,
+        'Cookie': request.headers.get('cookie') || '',
       },
     })
 

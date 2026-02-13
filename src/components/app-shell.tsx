@@ -2,11 +2,19 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { Mail, LayoutDashboard, Mic, Bot } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { Mail, LayoutDashboard, Video, Bot, User, ChevronDown, LogOut, Heart } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useOrganization } from '@/contexts/organization-context'
+import { useAuth } from '@/contexts/auth-context'
 import { cn } from '@/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface AppShellProps {
   children: React.ReactNode
@@ -14,7 +22,14 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const { selectedOrg } = useOrganization()
+  const { user, logout } = useAuth()
   const pathname = usePathname()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    await logout()
+    router.replace('/login')
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -52,16 +67,16 @@ export function AppShell({ children }: AppShellProps) {
                 Emails
               </Link>
               <Link
-                href="/workspace/transcripts"
+                href="/meetings"
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
-                  pathname === '/workspace/transcripts'
+                  pathname.startsWith('/meetings')
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 )}
               >
-                <Mic className="h-3.5 w-3.5" />
-                Transcripts
+                <Video className="h-3.5 w-3.5" />
+                Meetings
               </Link>
               <Link
                 href="/workspace-manager"
@@ -75,11 +90,42 @@ export function AppShell({ children }: AppShellProps) {
                 <Bot className="h-3.5 w-3.5" />
                 Planner
               </Link>
+              {user?.user_id === 'alex' && (
+                <Link
+                  href="/life"
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
+                    pathname === '/life'
+                      ? "bg-accent text-accent-foreground"
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                  )}
+                >
+                  <Heart className="h-3.5 w-3.5" />
+                  Life
+                </Link>
+              )}
             </nav>
           </div>
 
-          {/* Right side - Theme toggle only */}
+          {/* Right side - User menu + Theme toggle */}
           <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
+                <User className="h-3.5 w-3.5" />
+                <span>{user?.name || 'Unknown'}</span>
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem disabled className="text-xs text-muted-foreground">
+                  {user?.user_id}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <ThemeToggle />
           </div>
         </div>

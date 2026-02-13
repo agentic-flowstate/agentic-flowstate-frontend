@@ -83,6 +83,7 @@ export async function reconnectAgentStream(
   try {
     const response = await fetch(url, {
       headers: { 'Accept': 'text/event-stream' },
+      credentials: 'include',
     })
 
     console.log('[reconnectAgentStream] Response status:', response.status)
@@ -127,6 +128,7 @@ export async function streamAgentRun(
           'Accept': 'text/event-stream',
           'X-Organization': currentOrg || 'telemetryops',
         },
+        credentials: 'include',
         body: JSON.stringify({
           agent_type: agentType,
           previous_session_id: previousSessionId,
@@ -184,7 +186,9 @@ export async function streamAgentRunStructured(
   onEvent: (event: StreamEvent) => void,
   onComplete: () => void,
   onError: (error: Error) => void,
-  selectedSessionIds?: string[]
+  selectedSessionIds?: string[],
+  customInputMessage?: string,
+  stepId?: string
 ): Promise<void> {
   const currentOrg = getCurrentOrg()
 
@@ -198,10 +202,13 @@ export async function streamAgentRunStructured(
           'Accept': 'text/event-stream',
           'X-Organization': currentOrg || 'telemetryops',
         },
+        credentials: 'include',
         body: JSON.stringify({
           agent_type: agentType,
           previous_session_id: previousSessionId,
           selected_session_ids: selectedSessionIds,
+          custom_input_message: customInputMessage,
+          step_id: stepId,
         } as RunAgentRequest),
       }
     )
@@ -241,6 +248,7 @@ export async function sendMessageToAgent(
           'Content-Type': 'application/json',
           'Accept': 'text/event-stream',
         },
+        credentials: 'include',
         body: JSON.stringify({ message }),
       }
     )

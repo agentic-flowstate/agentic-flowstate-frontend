@@ -10,9 +10,16 @@ export async function GET(
   try {
     const params = await context.params
     const { ticket_id } = params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
     const response = await fetch(
-      `${RUST_API_URL}/api/tickets/${encodeURIComponent(ticket_id)}`
+      `${RUST_API_URL}/api/tickets/${encodeURIComponent(ticket_id)}`,
+      {
+        headers: {
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        }
+      }
     )
 
     if (response.status === 404) {

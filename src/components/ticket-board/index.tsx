@@ -1,7 +1,8 @@
 "use client"
 
-import { TicketBoardDesktop, TicketBoardProps } from './TicketBoardDesktop'
+import { TicketBoardDesktop } from './TicketBoardDesktop'
 import { TicketBoardMobile } from './TicketBoardMobile'
+import { TicketBoardProps } from './shared'
 import { useIsMobile } from '@/lib/hooks'
 
 export function TicketBoard(props: TicketBoardProps) {

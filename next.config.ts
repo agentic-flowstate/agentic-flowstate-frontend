@@ -9,6 +9,9 @@ const config: NextConfig = {
         'http://jarviss-mac-mini-1:3000',
         'http://jarviss-mac-mini:3000',
         'http://localhost:3000',
+        'http://jarviss-mac-mini-1.tail3da916.ts.net:3000',
+        'https://jarviss-mac-mini-1.tail3da916.ts.net',
+        'https://jarviss-mac-mini-1.tail3da916.ts.net:3000',
     ],
     // Aggressive cache busting for development
     headers: async () => [

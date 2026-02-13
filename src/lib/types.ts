@@ -1,6 +1,5 @@
 export type TicketStatus = "open" | "in_progress" | "completed" | "blocked" | "closed"
-export type TicketType = "task" | "bug" | "feature" | "chore"
-export type TicketPriority = "low" | "medium" | "high" | "critical"
+export type TicketType = "task" | "milestone"
 
 export interface Epic {
   epic_id: string
@@ -30,18 +29,34 @@ export interface Ticket {
   epic_id: string
   slice_id: string
   title: string
-  intent: string
   description?: string
-  type: TicketType
+  /** Agent-generated actionable guidance for this ticket */
+  guidance?: string
+  /** Type of ticket: task or milestone */
+  ticket_type?: TicketType
   status: TicketStatus
-  priority?: TicketPriority
   assignee?: string
-  notes?: string
-  blocks_tickets?: string[]
-  blocked_by_tickets?: string[]
-  caused_by_tickets?: string[]
+  agent?: string
+  pipeline?: Pipeline
+  repository?: string
+  artifact_path?: string
+  blocks?: string[]
+  blocked_by?: string[]
+  caused_by?: string[]
   created_at: number
   updated_at: number
+  created_at_iso: string
+  updated_at_iso: string
+}
+
+export interface Repository {
+  name: string
+  organization: string
+  github_org: string
+  description?: string
+  repo_type: string
+  default_branch: string
+  local_path?: string
   created_at_iso: string
   updated_at_iso: string
 }
@@ -146,29 +161,32 @@ export interface ThreadTicketsResponse {
   tickets: EmailThreadTicket[]
 }
 
-// Pipeline Types
-export type PipelineStepStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed"
-export type PipelineStepType = "auto" | "manual"
-export type AgentType = "research" | "planning" | "execution" | "evaluation" | "build"
+// Pipeline Types (matches backend models.rs)
+export type PipelineStepStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "skipped"
+export type ExecutionType = "auto" | "manual"
 
 export interface PipelineStep {
   step_id: string
-  step_number: number
-  agent_type: AgentType
-  step_type: PipelineStepType
+  agent_type: string
+  execution_type: ExecutionType
   status: PipelineStepStatus
-  started_at_iso?: string
-  completed_at_iso?: string
+  inputs?: Record<string, unknown>
+  outputs?: Record<string, unknown>
   agent_run_id?: string
+  started_at?: string
+  completed_at?: string
+  name?: string
 }
 
-export interface TicketPipeline {
-  ticket_id: string
+export interface Pipeline {
+  template_id?: string
   steps: PipelineStep[]
-  current_step?: number
-  created_at_iso: string
-  updated_at_iso: string
+  status?: string
+  current_step_index?: number
 }
+
+// Alias for backward compatibility
+export type TicketPipeline = Pipeline
 
 export interface PipelineStepDetail {
   step: PipelineStep
@@ -187,7 +205,7 @@ export interface PipelineStepDetail {
 
 // Graph types for React Flow
 export interface GraphTicket extends Ticket {
-  pipeline?: TicketPipeline
+  // pipeline already inherited from Ticket
 }
 
 export interface CrossSliceDependency {

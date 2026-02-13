@@ -9,12 +9,15 @@ export async function GET(
 ) {
   try {
     const { epic_id } = await params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
     // Call API server endpoint
     const response = await fetch(`${API_URL}/api/epics/${epic_id}`, {
       method: 'GET',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Organization': organization,
+        'Cookie': request.headers.get('cookie') || '',
       }
     })
 
@@ -45,12 +48,15 @@ export async function DELETE(
 ) {
   try {
     const { epic_id } = await params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
     // Call API server endpoint
     const response = await fetch(`${API_URL}/api/epics/${epic_id}`, {
       method: 'DELETE',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-Organization': organization,
+        'Cookie': request.headers.get('cookie') || '',
       }
     })
 

@@ -22,6 +22,7 @@ export interface MessageBlock {
   status?: string
   message?: string
   toolsCollapsed?: boolean
+  timestamp?: string
 }
 
 export type AgentStreamStatus = 'idle' | 'starting' | 'running' | 'reconnecting' | 'completed' | 'failed'
@@ -213,10 +214,7 @@ export function useAgentStream(): UseAgentStreamResult {
 
   // Process all buffered events at once after replay is complete
   const processBufferedEvents = useCallback((events: StreamEvent[], replayInfo: ReplayCompleteEvent | null) => {
-    if (events.length === 0) {
-      console.error('[useAgentStream] processBufferedEvents called with ZERO events!')
-      return
-    }
+    if (events.length === 0) return
 
     // Determine if agent is still running
     const agentStillRunning = replayInfo?.agent_status === 'running'

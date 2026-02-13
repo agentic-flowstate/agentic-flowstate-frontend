@@ -1,6 +1,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { useAuth } from '@/contexts/auth-context'
 
 export type OrganizationId = string
 
@@ -39,6 +40,7 @@ const OrganizationContext = createContext<OrganizationContextValue | undefined>(
 const STORAGE_KEY = 'selected-organization'
 
 export function OrganizationProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
   const [loading, setLoading] = useState(true)
@@ -49,7 +51,11 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       try {
         const response = await fetch('/api/organizations')
         if (response.ok) {
-          const orgIds: string[] = await response.json()
+          let orgIds: string[] = await response.json()
+          // Restrict agentic-flowstate org to alex
+          if (user?.user_id !== 'alex') {
+            orgIds = orgIds.filter(id => id !== 'agentic-flowstate')
+          }
           const orgs: Organization[] = orgIds.map(id => ({
             id,
             name: id,
@@ -77,7 +83,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       }
     }
     fetchOrganizations()
-  }, [])
+  }, [user?.user_id])
 
   const selectOrg = (org: Organization) => {
     setSelectedOrg(org)

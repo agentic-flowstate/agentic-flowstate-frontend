@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react'
 import { Mail, RefreshCw, Inbox, PenSquare, SendHorizonal, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Email, EmailListResponse, EmailDraft, Ticket as TicketType, EmailThreadTicket } from '@/lib/types'
+import { Email, EmailDraft, Ticket as TicketType, EmailThreadTicket } from '@/lib/types'
 import { listDrafts, updateDraft, deleteDraft, sendDraft, getTicketsForThread } from '@/lib/api/agents'
+import { fetchEmails as apiFetchEmails, patchEmail, sendEmail, fetchTicket } from '@/lib/api/emails'
 import {
   EmailList,
   DraftList,
@@ -16,7 +17,6 @@ import {
 } from '@/components/email'
 
 const VERIFIED_FROM_ADDRESSES = ['jakeGreene@ballotradar.com']
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
 
 type Folder = 'INBOX' | 'Sent' | 'Drafts'
 
@@ -73,12 +73,9 @@ export default function EmailsPage() {
   const fetchEmails = async (folder: 'INBOX' | 'Sent') => {
     setLoadingFolders(prev => ({ ...prev, [folder]: true }))
     try {
-      const response = await fetch(`${API_BASE}/api/emails?limit=100&folder=${folder}`)
-      if (response.ok) {
-        const data: EmailListResponse = await response.json()
-        setEmailsByFolder(prev => ({ ...prev, [folder]: data.emails }))
-        setStatsByFolder(prev => ({ ...prev, [folder]: { total: data.total, unread: data.unread } }))
-      }
+      const data = await apiFetchEmails(folder)
+      setEmailsByFolder(prev => ({ ...prev, [folder]: data.emails }))
+      setStatsByFolder(prev => ({ ...prev, [folder]: { total: data.total, unread: data.unread } }))
     } catch (error) {
       console.error('Failed to fetch emails:', error)
     } finally {
@@ -121,11 +118,7 @@ export default function EmailsPage() {
   const markAsRead = async (email: Email) => {
     if (email.is_read) return
     try {
-      await fetch(`${API_BASE}/api/emails/${email.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_read: true })
-      })
+      await patchEmail(email.id, { is_read: true })
       setEmailsByFolder(prev => ({
         ...prev,
         [currentFolder]: prev[currentFolder as 'INBOX' | 'Sent'].map(e =>
@@ -144,11 +137,7 @@ export default function EmailsPage() {
   const toggleStar = async (email: Email, e: React.MouseEvent) => {
     e.stopPropagation()
     try {
-      await fetch(`${API_BASE}/api/emails/${email.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ is_starred: !email.is_starred })
-      })
+      await patchEmail(email.id, { is_starred: !email.is_starred })
       const folderKey = currentFolder as 'INBOX' | 'Sent'
       setEmailsByFolder(prev => ({
         ...prev,
@@ -190,10 +179,7 @@ export default function EmailsPage() {
     setTicketModalLoading(true)
     setTicketModalOpen(true)
     try {
-      const response = await fetch(`${API_BASE}/api/epics/${epicId}/slices/${sliceId}/tickets/${ticketId}`)
-      if (response.ok) {
-        setTicketModalData(await response.json())
-      }
+      setTicketModalData(await fetchTicket(epicId, sliceId, ticketId))
     } catch (error) {
       console.error('Failed to fetch ticket:', error)
     } finally {
@@ -216,8 +202,7 @@ export default function EmailsPage() {
     })
     if (draft.ticket_id && draft.epic_id && draft.slice_id) {
       try {
-        const response = await fetch(`${API_BASE}/api/epics/${draft.epic_id}/slices/${draft.slice_id}/tickets/${draft.ticket_id}`)
-        if (response.ok) setLinkedTicket(await response.json())
+        setLinkedTicket(await fetchTicket(draft.epic_id, draft.slice_id, draft.ticket_id))
       } catch (error) {
         console.error('Failed to fetch linked ticket:', error)
       }
@@ -231,27 +216,19 @@ export default function EmailsPage() {
     }
     setSending(true)
     try {
-      const response = await fetch(`${API_BASE}/api/emails/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: compose.to.split(',').map(e => e.trim()).filter(Boolean),
-          cc: compose.cc ? compose.cc.split(',').map(e => e.trim()).filter(Boolean) : [],
-          subject: compose.subject,
-          body_text: compose.body,
-          body_html: `<pre style="font-family: sans-serif; white-space: pre-wrap;">${compose.body}</pre>`
-        })
+      await sendEmail({
+        to: compose.to.split(',').map(e => e.trim()).filter(Boolean),
+        cc: compose.cc ? compose.cc.split(',').map(e => e.trim()).filter(Boolean) : [],
+        subject: compose.subject,
+        body_text: compose.body,
+        body_html: `<pre style="font-family: sans-serif; white-space: pre-wrap;">${compose.body}</pre>`,
       })
-      if (response.ok) {
-        setShowCompose(false)
-        setCompose({ from: VERIFIED_FROM_ADDRESSES[0], to: '', cc: '', subject: '', body: '' })
-        fetchEmails('Sent')
-      } else {
-        alert(`Failed to send email: ${await response.text()}`)
-      }
+      setShowCompose(false)
+      setCompose({ from: VERIFIED_FROM_ADDRESSES[0], to: '', cc: '', subject: '', body: '' })
+      fetchEmails('Sent')
     } catch (error) {
       console.error('Failed to send email:', error)
-      alert('Failed to send email')
+      alert(error instanceof Error ? error.message : 'Failed to send email')
     } finally {
       setSending(false)
     }

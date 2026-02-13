@@ -1,12 +1,16 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 const RUST_API_URL = 'http://127.0.0.1:8001'
 
 // GET /api/organizations - List all unique organizations
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     // Get all epics (without org filter) and extract unique organizations
-    const response = await fetch(`${RUST_API_URL}/api/epics`)
+    const response = await fetch(`${RUST_API_URL}/api/epics`, {
+      headers: {
+        'Cookie': request.headers.get('cookie') || '',
+      },
+    })
 
     if (!response.ok) {
       throw new Error(`API returned ${response.status}`)

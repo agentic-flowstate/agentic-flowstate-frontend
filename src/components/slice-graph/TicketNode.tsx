@@ -6,6 +6,7 @@ import type { GraphTicket, PipelineStep } from '@/lib/types'
 import { getAgentIcon, getCrossSliceDependencies } from './utils'
 import { cn } from '@/lib/utils'
 import { Flag } from 'lucide-react'
+import { CopyTicketId } from '@/components/copy-ticket-id'
 
 interface TicketNodeData {
   ticket: GraphTicket
@@ -146,7 +147,7 @@ function TicketNodeComponent({ data }: NodeProps<TicketNodeData>) {
         <Handle type="target" position={Position.Top} className="!w-2.5 !h-2.5 !border-2 !border-zinc-900 !bg-zinc-600" />
 
         {/* Ticket ID */}
-        <div className="font-mono text-[9px] text-zinc-500 mb-1">{ticket.ticket_id}</div>
+        <CopyTicketId ticketId={ticket.ticket_id} className="text-[9px] text-zinc-500 hover:text-zinc-300 mb-1" iconClassName="h-2 w-2" />
 
         {/* Title */}
         <div className="text-xs font-semibold leading-tight mb-2.5 line-clamp-2">{ticket.title}</div>

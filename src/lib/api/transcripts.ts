@@ -1,7 +1,5 @@
 /**
  * Data Access Layer for Transcript System
- *
- * API calls go directly to the Rust API server at localhost:8001
  */
 
 import {
@@ -10,20 +8,27 @@ import {
   TranscriptEntriesResponse,
 } from "@/lib/types"
 
-// Direct API calls to Rust backend
-const API_BASE_URL = 'http://localhost:8001'
+function getApiBaseUrl() {
+  if (typeof window === 'undefined') return 'http://localhost:8001'
+  const isSecure = window.location.protocol === 'https:'
+  const host = window.location.hostname
+  if (isSecure) {
+    return `https://${host}:8443`
+  }
+  return `http://${host}:8001`
+}
 
 /**
  * Get all transcript sessions
  * @param activeOnly - If true, only return active sessions
  */
 export async function getTranscriptSessions(activeOnly: boolean = false): Promise<TranscriptSession[]> {
-  const url = new URL(`${API_BASE_URL}/api/transcripts`)
+  const url = new URL(`${getApiBaseUrl()}/api/transcripts`)
   if (activeOnly) {
     url.searchParams.set('active_only', 'true')
   }
 
-  const response = await fetch(url.toString())
+  const response = await fetch(url.toString(), { credentials: 'include' })
   if (!response.ok) {
     throw new Error(`Failed to fetch transcript sessions: ${response.statusText}`)
   }
@@ -37,7 +42,7 @@ export async function getTranscriptSessions(activeOnly: boolean = false): Promis
  * @param sessionId - Session ID to retrieve
  */
 export async function getTranscriptSession(sessionId: string): Promise<TranscriptEntriesResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/transcripts/${encodeURIComponent(sessionId)}`)
+  const response = await fetch(`${getApiBaseUrl()}/api/transcripts/${encodeURIComponent(sessionId)}`, { credentials: 'include' })
   if (!response.ok) {
     throw new Error(`Failed to fetch transcript session: ${response.statusText}`)
   }
@@ -59,33 +64,53 @@ export function streamTranscript(
   onSessionEnd?: () => void,
   onError?: (error: Error) => void
 ): () => void {
-  const eventSource = new EventSource(
-    `${API_BASE_URL}/api/transcripts/${encodeURIComponent(sessionId)}/stream`
-  )
+  const controller = new AbortController()
 
-  eventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data)
+  fetch(`${getApiBaseUrl()}/api/transcripts/${encodeURIComponent(sessionId)}/stream`, {
+    credentials: 'include',
+    headers: { 'Accept': 'text/event-stream' },
+    signal: controller.signal,
+  })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`Stream request failed: ${response.status}`)
+      const reader = response.body?.getReader()
+      if (!reader) return
 
-      if (data.type === 'entry') {
-        onEntry(data)
-      } else if (data.type === 'session_ended') {
-        onSessionEnd?.()
-        eventSource.close()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.type === 'entry') {
+                onEntry(data)
+              } else if (data.type === 'session_ended') {
+                onSessionEnd?.()
+                controller.abort()
+              }
+            } catch (e) {
+              console.error('Failed to parse transcript event:', e)
+            }
+          }
+        }
       }
-    } catch (e) {
-      console.error('Failed to parse transcript event:', e)
-    }
-  }
+    })
+    .catch((err) => {
+      if (err.name === 'AbortError') return
+      console.error('Transcript stream error:', err)
+      onError?.(new Error('Stream connection failed'))
+    })
 
-  eventSource.onerror = (error) => {
-    console.error('Transcript stream error:', error)
-    onError?.(new Error('Stream connection failed'))
-    eventSource.close()
-  }
-
-  // Return cleanup function
   return () => {
-    eventSource.close()
+    controller.abort()
   }
 }

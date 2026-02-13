@@ -10,10 +10,17 @@ export async function GET(
   try {
     const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
 
     // Call Rust API service with nested path
     const response = await fetch(
-      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`
+      `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`,
+      {
+        headers: {
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        }
+      }
     )
 
     if (response.status === 404) {
@@ -47,10 +54,18 @@ export async function DELETE(
     const params = await context.params
     const { epic_id, slice_id, ticket_id } = params
 
+    const organization = request.headers.get('X-Organization') || 'telemetryops'
+
     // Call Rust API service with nested path
     const response = await fetch(
       `${RUST_API_URL}/api/epics/${encodeURIComponent(epic_id)}/slices/${encodeURIComponent(slice_id)}/tickets/${encodeURIComponent(ticket_id)}`,
-      { method: 'DELETE' }
+      {
+        method: 'DELETE',
+        headers: {
+          'X-Organization': organization,
+          'Cookie': request.headers.get('cookie') || '',
+        }
+      }
     )
 
     if (!response.ok) {

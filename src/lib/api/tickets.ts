@@ -29,9 +29,10 @@ async function callAPI<T>(path: string, options?: RequestInit): Promise<T> {
 
     const response = await fetch(url, {
       ...options,
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
-        'X-Organization': currentOrg || 'telemetryops', // Default to telemetryops
+        'X-Organization': currentOrg || 'telemetryops',
         ...options?.headers,
       },
     })
@@ -68,6 +69,14 @@ async function callAPI<T>(path: string, options?: RequestInit): Promise<T> {
  */
 export async function getEpics(): Promise<Epic[]> {
   return callAPI<Epic[]>('/api/epics')
+}
+
+/**
+ * Get ALL tickets for the current organization (across all epics and slices)
+ * @returns Promise resolving to list of all tickets
+ */
+export async function getAllOrgTickets(): Promise<Ticket[]> {
+  return callAPI<Ticket[]>('/api/tickets')
 }
 
 /**
@@ -341,4 +350,20 @@ export async function getTicketHistoryById(
     `/api/tickets/${encodeURIComponent(ticketId)}/history${params}`
   )
   return response.events
+}
+
+/**
+ * Update ticket guidance
+ * @param ticketId - Ticket ID
+ * @param guidance - New guidance content (or null to clear)
+ * @returns Promise resolving to updated ticket
+ */
+export async function updateTicketGuidance(
+  ticketId: string,
+  guidance: string | null
+): Promise<Ticket> {
+  return callAPI<Ticket>(`/api/tickets/${encodeURIComponent(ticketId)}/guidance`, {
+    method: 'PATCH',
+    body: JSON.stringify({ guidance })
+  })
 }

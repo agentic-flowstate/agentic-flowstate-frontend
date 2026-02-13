@@ -27,6 +27,7 @@ import {
 import { Ticket } from '@/lib/types'
 import { useAgentStream, type MessageBlock } from '@/hooks/useAgentStream'
 import { MessageRenderer } from '@/components/message-renderer'
+import { updateTicketGuidance } from '@/lib/api/tickets'
 
 interface AgentRunModalProps {
   isOpen: boolean
@@ -37,8 +38,10 @@ interface AgentRunModalProps {
   reconnectSessionId?: string  // Session ID to reconnect to (for page refresh recovery)
   autoStart?: boolean  // Only start agent if explicitly requested
   onStart?: () => void
-  onComplete?: () => void
+  onComplete?: (outputSummary?: string) => void
   agentRuns?: AgentRun[]  // For email agent: available runs to select as context
+  onTicketUpdate?: (ticket: Ticket) => void  // For ticket-assistant: auto-save guidance
+  stepId?: string  // Pipeline step ID for pipeline-aware streaming
 }
 
 // Parse structured email from agent text output
@@ -168,6 +171,8 @@ export function AgentRunModal({
   onStart,
   onComplete,
   agentRuns = [],
+  onTicketUpdate,
+  stepId,
 }: AgentRunModalProps) {
   // Use the shared hook
   const {
@@ -197,6 +202,7 @@ export function AgentRunModal({
   const hasStartedRef = useRef(false)
   const hasReconnectedRef = useRef(false)
   const hasCompletedRef = useRef(false)
+  const outputTextRef = useRef<string>('')
 
   // Email agent specific state
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([])
@@ -211,7 +217,13 @@ export function AgentRunModal({
 
   // Check if email agent has completed initial generation (for showing chat input)
   const isEmailAgent = agentType === 'email'
+  const isTicketAssistant = agentType === 'ticket-assistant'
   const hasCompletedInitialGeneration = isEmailAgent && status === 'completed' && messages.length > 0
+  const hasTicketAssistantCompleted = isTicketAssistant && status === 'completed' && messages.length > 0
+
+  // Track custom input for ticket-assistant
+  const [ticketAssistantInput, setTicketAssistantInput] = useState('')
+  const [isSavingGuidance, setIsSavingGuidance] = useState(false)
 
   // Auto-scroll to bottom only if user hasn't scrolled away
   useEffect(() => {
@@ -241,10 +253,20 @@ export function AgentRunModal({
     if (!isOpen) {
       hasStartedRef.current = false
       hasReconnectedRef.current = false
+      hasCompletedRef.current = false
       setSelectedSessionIds([])
       setChatInput('')
+      setTicketAssistantInput('')
+      setSavedEmailKeys(new Set())
     }
   }, [isOpen])
+
+  // Reset stream state when modal opens for a fresh session (not a reconnect)
+  useEffect(() => {
+    if (isOpen && !reconnectSessionId) {
+      reset()
+    }
+  }, [isOpen, reconnectSessionId, reset])
 
   // Toggle session selection for context (email agent)
   const toggleSessionSelection = useCallback((sid: string) => {
@@ -337,7 +359,21 @@ export function AgentRunModal({
     )
   }
 
-  const startAgent = async () => {
+  // Auto-save guidance when ticket-assistant completes
+  const saveGuidanceToTicket = useCallback(async (guidance: string) => {
+    if (!ticket || !onTicketUpdate) return
+    setIsSavingGuidance(true)
+    try {
+      const updated = await updateTicketGuidance(ticket.ticket_id, guidance)
+      onTicketUpdate(updated)
+    } catch (error) {
+      console.error('Failed to save guidance:', error)
+    } finally {
+      setIsSavingGuidance(false)
+    }
+  }, [ticket, onTicketUpdate])
+
+  const startAgent = async (customMessage?: string) => {
     if (!ticket || !agentType) return
 
     setIsRunning(true)
@@ -345,7 +381,13 @@ export function AgentRunModal({
     setStatus('starting')
     userScrolledRef.current = false
     hasCompletedRef.current = false
+    outputTextRef.current = ''
     onStart?.()
+
+    // For ticket-assistant, add user message to display
+    if (isTicketAssistant && customMessage) {
+      addUserMessage(customMessage)
+    }
 
     await streamAgentRunStructured(
       ticket.epic_id,
@@ -358,6 +400,12 @@ export function AgentRunModal({
         if (event.type === 'result' && 'session_id' in event) {
           setSessionId(event.session_id)
         }
+
+        // Capture text output for ticket-assistant
+        if (event.type === 'text' && 'content' in event) {
+          outputTextRef.current += event.content
+        }
+
         processEvent(event)
 
         // Handle completion
@@ -365,7 +413,11 @@ export function AgentRunModal({
           setIsRunning(false)
           if (!hasCompletedRef.current) {
             hasCompletedRef.current = true
-            onComplete?.()
+            // Auto-save guidance for ticket-assistant
+            if (isTicketAssistant && outputTextRef.current) {
+              saveGuidanceToTicket(outputTextRef.current)
+            }
+            onComplete?.(outputTextRef.current || undefined)
           }
         }
       },
@@ -375,7 +427,11 @@ export function AgentRunModal({
         setStatus('completed')
         if (!hasCompletedRef.current) {
           hasCompletedRef.current = true
-          onComplete?.()
+          // Auto-save guidance for ticket-assistant
+          if (isTicketAssistant && outputTextRef.current) {
+            saveGuidanceToTicket(outputTextRef.current)
+          }
+          onComplete?.(outputTextRef.current || undefined)
         }
       },
       (err) => {
@@ -388,7 +444,59 @@ export function AgentRunModal({
           onComplete?.()
         }
       },
-      isEmailAgent ? selectedSessionIds : undefined
+      isEmailAgent ? selectedSessionIds : undefined,
+      customMessage || undefined,
+      stepId
+    )
+  }
+
+  // Start ticket-assistant with the user's question
+  const handleTicketAssistantStart = () => {
+    if (!ticketAssistantInput.trim()) return
+    const question = ticketAssistantInput.trim()
+    setTicketAssistantInput('')
+    startAgent(question)
+  }
+
+  // Send follow-up to ticket-assistant (reuses existing agent session)
+  const handleTicketAssistantFollowUp = async () => {
+    const sid = sessionId || reconnectSessionId
+    if (!sid || !ticketAssistantInput.trim() || isSendingMessage) return
+
+    const messageText = ticketAssistantInput.trim()
+    setTicketAssistantInput('')
+    setIsSendingMessage(true)
+    setStatus('running')
+    outputTextRef.current = ''
+
+    // Add user message to display
+    addUserMessage(messageText)
+
+    await sendMessageToAgent(
+      sid,
+      messageText,
+      (event: StreamEvent) => {
+        // Capture text output
+        if (event.type === 'text' && 'content' in event) {
+          outputTextRef.current += event.content
+        }
+        processEvent(event)
+      },
+      () => {
+        finalizeAllTools()
+        setIsSendingMessage(false)
+        setStatus('completed')
+        // Auto-save the follow-up response
+        if (outputTextRef.current) {
+          saveGuidanceToTicket(outputTextRef.current)
+        }
+      },
+      (err) => {
+        finalizeAllTools()
+        setIsSendingMessage(false)
+        setError(err.message)
+        setStatus('failed')
+      }
     )
   }
 
@@ -489,6 +597,36 @@ export function AgentRunModal({
           )}
         </DialogHeader>
 
+        {/* Initial question input for ticket-assistant - shown before agent starts */}
+        {isTicketAssistant && !isRunning && !isReconnecting && status === 'idle' && !reconnectSessionId && (
+          <div className="px-6 py-4 border-b border-border shrink-0 bg-muted/30">
+            <div className="flex items-center gap-2 mb-3">
+              <Send className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm font-medium">Ask a question about this ticket</span>
+            </div>
+            <Textarea
+              value={ticketAssistantInput}
+              onChange={(e) => setTicketAssistantInput(e.target.value)}
+              placeholder="What do I need to start this task? What are the steps involved?"
+              className="min-h-[80px] max-h-[150px] resize-none mb-3"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  handleTicketAssistantStart()
+                }
+              }}
+            />
+            <Button
+              className="w-full bg-emerald-500 hover:bg-emerald-600"
+              onClick={handleTicketAssistantStart}
+              disabled={!ticketAssistantInput.trim()}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Ask Assistant
+            </Button>
+          </div>
+        )}
+
         {/* Context selector for email agent - shown before agent starts */}
         {isEmailAgent && !isRunning && !isReconnecting && status === 'idle' && (
           <div className="px-6 py-4 border-b border-border shrink-0 bg-muted/30">
@@ -535,7 +673,7 @@ export function AgentRunModal({
             )}
             <Button
               className="mt-4 w-full bg-cyan-500 hover:bg-cyan-600"
-              onClick={startAgent}
+              onClick={() => startAgent()}
             >
               <Send className="h-4 w-4 mr-2" />
               Generate Email
@@ -552,7 +690,7 @@ export function AgentRunModal({
             </div>
           )}
 
-          {messages.length === 0 && !isRunning && !isReconnecting && status !== 'running' && status !== 'idle' && !error && (
+          {messages.length === 0 && !isRunning && !isReconnecting && !reconnectSessionId && status !== 'running' && status !== 'idle' && status !== 'starting' && !error && (
             <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500">
               <div className="flex items-center gap-2 font-medium">
                 <AlertCircle className="h-4 w-4" />
@@ -623,6 +761,45 @@ export function AgentRunModal({
                 className="h-[60px] w-[60px] shrink-0"
                 onClick={handleSendMessage}
                 disabled={!chatInput.trim() || isSendingMessage || isRunning}
+              >
+                {isSendingMessage ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Chat input for ticket-assistant follow-up questions */}
+        {isTicketAssistant && (hasTicketAssistantCompleted || (status === 'completed' && messages.length > 0)) && (
+          <div className="px-6 py-4 border-t border-border shrink-0 bg-background">
+            {isSavingGuidance && (
+              <div className="flex items-center gap-2 text-xs text-emerald-500 mb-2">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving to ticket...
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Textarea
+                value={ticketAssistantInput}
+                onChange={(e) => setTicketAssistantInput(e.target.value)}
+                placeholder="Ask a follow-up question..."
+                className="min-h-[60px] max-h-[120px] resize-none"
+                disabled={isSendingMessage || isRunning}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleTicketAssistantFollowUp()
+                  }
+                }}
+              />
+              <Button
+                size="icon"
+                className="h-[60px] w-[60px] shrink-0 bg-emerald-500 hover:bg-emerald-600"
+                onClick={handleTicketAssistantFollowUp}
+                disabled={!ticketAssistantInput.trim() || isSendingMessage || isRunning}
               >
                 {isSendingMessage ? (
                   <Loader2 className="h-5 w-5 animate-spin" />

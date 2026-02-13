@@ -5,6 +5,7 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import type { GraphTicket, PipelineStep } from '@/lib/types'
 import { getAgentIcon, getAgentName, getCrossSliceDependencies } from './utils'
 import { cn } from '@/lib/utils'
+import { CopyTicketId } from '@/components/copy-ticket-id'
 
 interface ExpandedTicketNodeData {
   ticket: GraphTicket
@@ -120,7 +121,7 @@ function ExpandedTicketNodeComponent({ data }: NodeProps<ExpandedTicketNodeData>
 
       {/* Header */}
       <div className={cn("p-3 border-b border-zinc-800", statusHeaderClasses[status])}>
-        <div className="font-mono text-[9px] text-zinc-500 mb-1">{ticket.ticket_id}</div>
+        <CopyTicketId ticketId={ticket.ticket_id} className="text-[9px] text-zinc-500 hover:text-zinc-300 mb-1" iconClassName="h-2 w-2" />
         <div className="text-xs font-semibold text-zinc-200 leading-tight mb-2">{ticket.title}</div>
         <div className="flex justify-between items-center">
           <span className="text-[9px] text-zinc-500">

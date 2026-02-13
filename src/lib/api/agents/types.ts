@@ -3,21 +3,24 @@
  */
 
 import type { OrganizationId } from "@/contexts/organization-context"
+import { API_BASE } from '@/lib/api/config'
 
 // Agent API calls go directly to Rust API server
-function getAgentApiBase(): string {
-  if (typeof window === 'undefined') return 'http://localhost:8001'
+// When accessed via HTTPS (Tailscale), use port 8443
+// When accessed via HTTP (localhost), use port 8001
+export function getAgentApiBase(): string {
+  if (typeof window === 'undefined') return API_BASE
 
-  // If accessing from localhost, use localhost
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'http://localhost:8001'
+  const isSecure = window.location.protocol === 'https:'
+  const host = window.location.hostname
+
+  if (isSecure) {
+    return `https://${host}:8443`
   }
-
-  // For remote access (mobile via Tailscale), use the same host as the frontend
-  return `http://${window.location.hostname}:8001`
+  return `http://${host}:8001`
 }
 
-export const AGENT_API_BASE = typeof window !== 'undefined' ? getAgentApiBase() : 'http://localhost:8001'
+export const AGENT_API_BASE = typeof window !== 'undefined' ? getAgentApiBase() : API_BASE
 
 // Get current organization from localStorage (client-side only)
 export function getCurrentOrg(): OrganizationId | null {
@@ -26,10 +29,10 @@ export function getCurrentOrg(): OrganizationId | null {
   return stored as OrganizationId | null
 }
 
-export type AgentType = 'vendor-research' | 'technical-research' | 'competitive-research' | 'planning' | 'execution' | 'evaluation' | 'email'
+export type AgentType = 'vendor-research' | 'technical-research' | 'competitive-research' | 'planning' | 'execution' | 'evaluation' | 'email' | 'ticket-assistant'
 
 /** All valid current agent types */
-export const CURRENT_AGENT_TYPES: AgentType[] = ['vendor-research', 'technical-research', 'competitive-research', 'planning', 'execution', 'evaluation', 'email']
+export const CURRENT_AGENT_TYPES: AgentType[] = ['vendor-research', 'technical-research', 'competitive-research', 'planning', 'execution', 'evaluation', 'email', 'ticket-assistant']
 
 /** Check if a string is a valid current AgentType */
 export function isValidAgentType(type: string): type is AgentType {
@@ -67,6 +70,8 @@ export interface RunAgentRequest {
   agent_type: AgentType
   previous_session_id?: string
   selected_session_ids?: string[]  // For email agent: inject context from these sessions
+  custom_input_message?: string  // For ticket-assistant: user's question
+  step_id?: string  // Explicit pipeline step ID for pipeline-aware streaming
 }
 
 export interface RunAgentResponse {
@@ -145,6 +150,8 @@ export function getAgentTypeInfo(type: AgentType): {
       return { label: 'Evaluation', description: 'Review and validate', color: 'text-red-500' }
     case 'email':
       return { label: 'Email', description: 'Generate email draft', color: 'text-cyan-500' }
+    case 'ticket-assistant':
+      return { label: 'Ticket Assistant', description: 'Answer questions and provide guidance', color: 'text-emerald-500' }
   }
 }
 

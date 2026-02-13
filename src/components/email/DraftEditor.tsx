@@ -120,9 +120,9 @@ export function DraftEditor({
                   <Eye className="h-3 w-3" />
                 </button>
               </div>
-              {linkedTicket.intent && (
+              {linkedTicket.description && (
                 <div className="text-xs text-muted-foreground mt-1 ml-6">
-                  {linkedTicket.intent}
+                  {linkedTicket.description}
                 </div>
               )}
             </div>

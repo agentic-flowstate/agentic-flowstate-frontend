@@ -6,6 +6,7 @@ import { SliceGraph } from './SliceGraph'
 import { ApprovalDrawer } from './ApprovalDrawer'
 
 export { SliceGraph } from './SliceGraph'
+export { OrgGraph } from './OrgGraph'
 export { TicketNode } from './TicketNode'
 export { ExpandedTicketNode } from './ExpandedTicketNode'
 export { ApprovalDrawer } from './ApprovalDrawer'
@@ -15,7 +16,10 @@ interface SliceGraphWithApprovalProps {
   slice: Slice
   tickets: GraphTicket[]
   allTickets: GraphTicket[]
+  selectedTicketId?: string | null
+  processingTicketIds?: Set<string>
   onTicketClick?: (ticket: GraphTicket) => void
+  onPaneClick?: () => void
   onCrossSliceClick?: (ticketId: string, sliceId: string) => void
   onRefresh?: () => void
 }
@@ -27,7 +31,10 @@ export function SliceGraphWithApproval({
   slice,
   tickets,
   allTickets,
+  selectedTicketId,
+  processingTicketIds,
   onTicketClick,
+  onPaneClick,
   onCrossSliceClick,
   onRefresh,
 }: SliceGraphWithApprovalProps) {
@@ -58,7 +65,10 @@ export function SliceGraphWithApproval({
         slice={slice}
         tickets={tickets}
         allTickets={allTickets}
+        selectedTicketId={selectedTicketId}
+        processingTicketIds={processingTicketIds}
         onTicketClick={onTicketClick}
+        onPaneClick={onPaneClick}
         onStepClick={handleStepClick}
         onCrossSliceClick={onCrossSliceClick}
       />

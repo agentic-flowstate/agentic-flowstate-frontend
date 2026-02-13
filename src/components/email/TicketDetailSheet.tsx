@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden'
 import { cn } from '@/lib/utils'
 import { Ticket } from '@/lib/types'
+import { CopyTicketId } from '@/components/copy-ticket-id'
 
 interface TicketDetailSheetProps {
   open: boolean
@@ -35,7 +36,7 @@ export function TicketDetailSheet({
             {/* Header */}
             <div className="h-14 border-b flex items-center justify-between px-4 shrink-0">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-mono text-muted-foreground">{ticket.ticket_id}</span>
+                <CopyTicketId ticketId={ticket.ticket_id} className="text-[10px]" />
                 <span className="text-xs text-muted-foreground">•</span>
                 <span className={cn(
                   "text-xs font-medium",
@@ -54,23 +55,7 @@ export function TicketDetailSheet({
               {/* Title */}
               <div>
                 <h2 className="text-lg font-semibold text-foreground mb-2">{ticket.title}</h2>
-                {ticket.type && ticket.type !== 'task' && (
-                  <span className="inline-block px-2 py-1 bg-muted border border-border rounded text-xs text-muted-foreground">
-                    {ticket.type}
-                  </span>
-                )}
               </div>
-
-              {/* Intent */}
-              {ticket.intent && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">INTENT</span>
-                  </div>
-                  <p className="text-sm text-foreground">{ticket.intent}</p>
-                </div>
-              )}
 
               {/* Description */}
               {ticket.description && (
@@ -83,18 +68,6 @@ export function TicketDetailSheet({
                 </div>
               )}
 
-              {/* Notes */}
-              {ticket.notes && (
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileText className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">NOTES</span>
-                  </div>
-                  <div className="text-sm text-muted-foreground whitespace-pre-wrap p-2 bg-muted/20 rounded-md">
-                    {ticket.notes}
-                  </div>
-                </div>
-              )}
 
               {/* Assignee */}
               {ticket.assignee && (

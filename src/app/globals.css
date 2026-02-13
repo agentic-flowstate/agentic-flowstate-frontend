@@ -236,3 +236,52 @@
     stroke-dashoffset: -10;
   }
 }
+
+/* Ticket node selection glow - golden */
+.ticket-selected-glow {
+  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.6)) drop-shadow(0 0 16px rgba(251, 191, 36, 0.3));
+}
+
+/* Ticket node processing border - subtle RGB flow */
+@keyframes rgb-border-flow {
+  0% {
+    --border-angle: 0deg;
+  }
+  100% {
+    --border-angle: 360deg;
+  }
+}
+
+.ticket-processing-border {
+  position: relative;
+  border-radius: 10px;
+}
+
+.ticket-processing-border::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 12px;
+  padding: 3px;
+  background: conic-gradient(
+    from var(--border-angle),
+    rgba(147, 51, 234, 0.5),
+    rgba(59, 130, 246, 0.5),
+    rgba(16, 185, 129, 0.5),
+    rgba(245, 158, 11, 0.5),
+    rgba(239, 68, 68, 0.5),
+    rgba(147, 51, 234, 0.5)
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rgb-border-flow 3s linear infinite;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Combined state - processing takes precedence for border, but add glow too */
+.ticket-processing-border.ticket-selected-glow::before {
+  opacity: 0.9;
+}
