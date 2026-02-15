@@ -11,10 +11,11 @@ export interface ConversationChatOptions {
   chatApiEndpoint: string
   basePath: string
   enrichMessage?: (message: string) => string
+  onEvent?: (event: StreamEvent) => void
 }
 
 export function useConversationChat(options: ConversationChatOptions) {
-  const { sseOrganization, chatApiEndpoint, basePath, enrichMessage } = options
+  const { sseOrganization, chatApiEndpoint, basePath, enrichMessage, onEvent } = options
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -48,13 +49,17 @@ export function useConversationChat(options: ConversationChatOptions) {
     handleScroll,
   } = agentStream
 
-  // Sync URL when conversation changes
+  // Sync URL when conversation changes (preserve other params like ?ticket=)
   useEffect(() => {
-    const params = new URLSearchParams()
-    if (currentConversationId) params.set('conv', currentConversationId)
-    const newUrl = params.toString() ? `?${params.toString()}` : basePath
+    const params = new URLSearchParams(searchParams.toString())
+    if (currentConversationId) {
+      params.set('conv', currentConversationId)
+    } else {
+      params.delete('conv')
+    }
+    const newUrl = params.toString() ? `${basePath}?${params.toString()}` : basePath
     router.replace(newUrl, { scroll: false })
-  }, [currentConversationId, router, basePath])
+  }, [currentConversationId, router, basePath, searchParams])
 
   // Load conversation from URL on initial load
   useEffect(() => {
@@ -156,6 +161,13 @@ export function useConversationChat(options: ConversationChatOptions) {
     }
   }, [inputValue])
 
+  // Refocus textarea after agent response completes
+  useEffect(() => {
+    if (!isRunning && textareaRef.current) {
+      textareaRef.current.focus()
+    }
+  }, [isRunning])
+
   const startNewConversation = useCallback(() => {
     reset()
     setCurrentConversationId(null)
@@ -246,9 +258,7 @@ export function useConversationChat(options: ConversationChatOptions) {
         })
       }
 
-      const endpoint = sessionId
-        ? `${chatApiEndpoint}/resume`
-        : `${chatApiEndpoint}/chat`
+      const endpoint = `${chatApiEndpoint}/chat`
 
       const finalMessage = enrichMessage ? enrichMessage(userMessage) : userMessage
 
@@ -258,7 +268,6 @@ export function useConversationChat(options: ConversationChatOptions) {
         credentials: 'include',
         body: JSON.stringify({
           message: finalMessage,
-          session_id: sessionId,
           conversation_id: convId,
         })
       })
@@ -297,6 +306,7 @@ export function useConversationChat(options: ConversationChatOptions) {
               }
 
               processEvent(event)
+              onEvent?.(event)
             } catch (e) {
               console.error('Failed to parse SSE event:', e)
             }
@@ -321,7 +331,7 @@ export function useConversationChat(options: ConversationChatOptions) {
     } finally {
       setIsRunning(false)
     }
-  }, [inputValue, isRunning, sessionId, currentConversationId, sseOrganization, chatApiEndpoint, enrichMessage, addUserMessage, processEvent, finalizeAllTools, setStatus, setError, setSessionId, setIsRunning, userScrolledRef])
+  }, [inputValue, isRunning, sessionId, currentConversationId, sseOrganization, chatApiEndpoint, enrichMessage, onEvent, addUserMessage, processEvent, finalizeAllTools, setStatus, setError, setSessionId, setIsRunning, userScrolledRef])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }

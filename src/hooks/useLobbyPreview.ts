@@ -38,12 +38,15 @@ export function useLobbyPreview(options: UseLobbyPreviewOptions): UseLobbyPrevie
 
     async function startPreview() {
       try {
-        const constraints: MediaStreamConstraints = {
-          audio: selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true,
-          video: selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true,
-        }
+        const audioConstraint = selectedAudioDevice ? { deviceId: { exact: selectedAudioDevice } } : true
+        const videoConstraint = selectedVideoDevice ? { deviceId: { exact: selectedVideoDevice } } : true
 
-        stream = await navigator.mediaDevices.getUserMedia(constraints)
+        // Try audio+video, fall back to audio-only (e.g. Mac Mini has no camera)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint, video: videoConstraint })
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint, video: false })
+        }
 
         if (cancelled) {
           stream.getTracks().forEach(track => track.stop())

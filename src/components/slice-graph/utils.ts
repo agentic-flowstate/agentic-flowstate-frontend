@@ -65,7 +65,7 @@ export function deriveTicketStatus(ticket: GraphTicket): 'completed' | 'in-progr
   if (!pipeline || !pipeline.steps || pipeline.steps.length === 0) {
     if (ticket.status === 'completed' || ticket.status === 'closed') return 'completed'
     if (ticket.status === 'blocked') return 'blocked'
-    if (ticket.status === 'in_progress') return 'in-progress'
+    if (ticket.status === 'in_progress' || ticket.status === 'pending-enrichment') return 'in-progress'
     return 'queued'
   }
 
@@ -206,8 +206,10 @@ export async function getOrgLayoutedElements(
     return { nodes: [], edges: [] }
   }
 
-  const sliceMap = new Map(slices.map(s => [s.slice_id, s]))
-  const epicMap = new Map(epics.map(e => [e.epic_id, e]))
+  const sliceMap: Record<string, Slice> = {}
+  for (const s of slices) sliceMap[s.slice_id] = s
+  const epicMap: Record<string, Epic> = {}
+  for (const e of epics) epicMap[e.epic_id] = e
 
   // Build ELK graph
   const elkNodes = tickets.map(ticket => ({
@@ -251,8 +253,8 @@ export async function getOrgLayoutedElements(
   // Convert to React Flow format
   const nodes: Node[] = (layout.children || []).map(elkNode => {
     const ticket = tickets.find(t => t.ticket_id === elkNode.id)!
-    const slice = sliceMap.get(ticket.slice_id)
-    const epic = epicMap.get(ticket.epic_id)
+    const slice = sliceMap[ticket.slice_id]
+    const epic = epicMap[ticket.epic_id]
 
     return {
       id: ticket.ticket_id,

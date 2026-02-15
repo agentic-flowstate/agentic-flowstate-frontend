@@ -30,7 +30,13 @@ export function useMediaDevices(devicePreferences: DevicePreferences): UseMediaD
     async function getDevices() {
       try {
         // Need to get permission first to see device labels
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        // Try audio+video first, fall back to audio-only (e.g. Mac Mini has no camera)
+        let stream: MediaStream
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        }
         stream.getTracks().forEach(track => track.stop())
 
         const devices = await navigator.mediaDevices.enumerateDevices()

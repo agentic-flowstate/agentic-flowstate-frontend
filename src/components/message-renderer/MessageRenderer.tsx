@@ -105,14 +105,13 @@ export function MessageRenderer({
         </div>
       ))}
 
-      {/* Loading indicator - typing bubble style */}
+      {/* Loading indicator */}
       {isLoading && messages.length > 0 && messages[messages.length - 1]?.type === 'user' && (
         <div className="flex justify-start">
-          <div className="bg-muted px-4 py-3 rounded-2xl rounded-bl-md shadow-sm">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce" />
+          <div className="bg-muted px-4 py-2.5 rounded-2xl rounded-bl-md shadow-sm">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>{loadingMessage}</span>
             </div>
           </div>
         </div>
@@ -201,7 +200,7 @@ function MermaidDiagram({ chart }: { chart: string }) {
 }
 
 /** Shared markdown component overrides */
-const markdownComponents = {
+export const markdownComponents = {
   p: ({ children }: { children?: React.ReactNode }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
   ul: ({ children }: { children?: React.ReactNode }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
   ol: ({ children }: { children?: React.ReactNode }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,

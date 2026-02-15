@@ -12,7 +12,7 @@ import {
 } from '@/lib/api/agents'
 import type { Pipeline, PipelineStep, PipelineStepStatus } from '@/lib/types'
 
-// Helper to format template_id for display
+// Helper to format origin_template_id for display
 function formatTemplateName(templateId: string): string {
   return templateId
     .split('-')
@@ -67,6 +67,7 @@ export interface TicketAgentSectionProps {
   onRunPipeline: () => Promise<void>
   onRetryStep: (stepId: string) => Promise<void>
   onViewArchivedRun: (run: AgentRun) => void
+  onEditPipeline?: () => void
   variant?: 'desktop' | 'mobile'
 }
 
@@ -82,6 +83,7 @@ export function TicketAgentSection({
   onRunPipeline,
   onRetryStep,
   onViewArchivedRun,
+  onEditPipeline,
   variant = 'desktop',
 }: TicketAgentSectionProps) {
   const [isPipelineStarting, setIsPipelineStarting] = useState(false)
@@ -100,9 +102,14 @@ export function TicketAgentSection({
       <div className="flex items-center gap-2 mb-3">
         <GitBranch className={cn(iconSize, "text-muted-foreground")} />
         <span className={cn(textSize, "font-medium text-muted-foreground")}>PIPELINE</span>
-        {pipeline?.template_id && (
+        {pipeline?.origin_template_id && (
           <Badge variant="outline" className={cn(smallTextSize, "ml-auto font-normal")}>
-            {formatTemplateName(pipeline.template_id)}
+            {formatTemplateName(pipeline.origin_template_id)}
+          </Badge>
+        )}
+        {pipeline?.customized && (
+          <Badge variant="secondary" className={cn(smallTextSize, "font-normal")}>
+            Customized
           </Badge>
         )}
       </div>
@@ -148,7 +155,7 @@ export function TicketAgentSection({
         {hasPipelineSteps ? (
           // Render actual pipeline steps
           pipeline!.steps.map((step, index) => {
-            const isThisRunning = isAgentRunning && modalAgentType === step.agent_type
+            const isThisRunning = step.status === 'running'
             const isThisChecking = isCheckingActiveAgent
             const statusInfo = getStepStatusLabel(step.status)
             const isManual = step.execution_type === 'manual'
@@ -171,7 +178,7 @@ export function TicketAgentSection({
                   isNotReady && "opacity-50 cursor-not-allowed"
                 )}
                 onClick={() => onRunAgent(step.agent_type as AgentType)}
-                disabled={isThisChecking || (isAgentRunning && step.status !== 'completed' && step.status !== 'failed' && modalAgentType !== step.agent_type) || isNotReady}
+                disabled={isThisChecking || (isAgentRunning && step.status !== 'completed' && step.status !== 'failed' && step.status !== 'running' && modalAgentType !== step.agent_type) || isNotReady}
               >
                 {isMobile ? (
                   // Mobile layout - horizontal
@@ -280,6 +287,19 @@ export function TicketAgentSection({
           </div>
         )}
       </div>
+
+      {/* Edit Pipeline Button */}
+      {hasPipelineSteps && onEditPipeline && (
+        <Button
+          variant="ghost"
+          size={isMobile ? "default" : "sm"}
+          className={cn("w-full mb-2", textSize)}
+          onClick={onEditPipeline}
+        >
+          <Bot className={cn(iconSize, "mr-1.5")} />
+          Edit Pipeline
+        </Button>
+      )}
 
       {/* Agent History - archived/legacy runs */}
       {archivedRuns.length > 0 && (

@@ -218,8 +218,14 @@ export function AgentRunModal({
   // Check if email agent has completed initial generation (for showing chat input)
   const isEmailAgent = agentType === 'email'
   const isTicketAssistant = agentType === 'ticket-assistant'
+  const isDocManager = agentType === 'doc-manager'
+  const isPipelineEditor = agentType === 'pipeline-editor'
+  const isInteractiveAgent = isTicketAssistant || isDocManager || isPipelineEditor
   const hasCompletedInitialGeneration = isEmailAgent && status === 'completed' && messages.length > 0
   const hasTicketAssistantCompleted = isTicketAssistant && status === 'completed' && messages.length > 0
+  const hasDocManagerCompleted = isDocManager && status === 'completed' && messages.length > 0
+  const hasPipelineEditorCompleted = isPipelineEditor && status === 'completed' && messages.length > 0
+  const hasInteractiveAgentCompleted = hasTicketAssistantCompleted || hasDocManagerCompleted || hasPipelineEditorCompleted
 
   // Track custom input for ticket-assistant
   const [ticketAssistantInput, setTicketAssistantInput] = useState('')
@@ -458,7 +464,7 @@ export function AgentRunModal({
     startAgent(question)
   }
 
-  // Send follow-up to ticket-assistant (reuses existing agent session)
+  // Send follow-up to interactive agent (ticket-assistant, doc-manager) — reuses existing session
   const handleTicketAssistantFollowUp = async () => {
     const sid = sessionId || reconnectSessionId
     if (!sid || !ticketAssistantInput.trim() || isSendingMessage) return
@@ -486,8 +492,8 @@ export function AgentRunModal({
         finalizeAllTools()
         setIsSendingMessage(false)
         setStatus('completed')
-        // Auto-save the follow-up response
-        if (outputTextRef.current) {
+        // Auto-save the follow-up response (ticket-assistant only)
+        if (isTicketAssistant && outputTextRef.current) {
           saveGuidanceToTicket(outputTextRef.current)
         }
       },
@@ -772,10 +778,10 @@ export function AgentRunModal({
           </div>
         )}
 
-        {/* Chat input for ticket-assistant follow-up questions */}
-        {isTicketAssistant && (hasTicketAssistantCompleted || (status === 'completed' && messages.length > 0)) && (
+        {/* Chat input for interactive agent follow-up questions (ticket-assistant, doc-manager) */}
+        {isInteractiveAgent && (hasInteractiveAgentCompleted || (status === 'completed' && messages.length > 0)) && (
           <div className="px-6 py-4 border-t border-border shrink-0 bg-background">
-            {isSavingGuidance && (
+            {isTicketAssistant && isSavingGuidance && (
               <div className="flex items-center gap-2 text-xs text-emerald-500 mb-2">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Saving to ticket...
@@ -785,7 +791,7 @@ export function AgentRunModal({
               <Textarea
                 value={ticketAssistantInput}
                 onChange={(e) => setTicketAssistantInput(e.target.value)}
-                placeholder="Ask a follow-up question..."
+                placeholder={isDocManager ? "Ask about the docs, request changes..." : isPipelineEditor ? "Request pipeline changes..." : "Ask a follow-up question..."}
                 className="min-h-[60px] max-h-[120px] resize-none"
                 disabled={isSendingMessage || isRunning}
                 onKeyDown={(e) => {
@@ -797,7 +803,7 @@ export function AgentRunModal({
               />
               <Button
                 size="icon"
-                className="h-[60px] w-[60px] shrink-0 bg-emerald-500 hover:bg-emerald-600"
+                className={cn("h-[60px] w-[60px] shrink-0", isDocManager ? "bg-blue-500 hover:bg-blue-600" : isPipelineEditor ? "bg-purple-500 hover:bg-purple-600" : "bg-emerald-500 hover:bg-emerald-600")}
                 onClick={handleTicketAssistantFollowUp}
                 disabled={!ticketAssistantInput.trim() || isSendingMessage || isRunning}
               >

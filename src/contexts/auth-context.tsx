@@ -9,10 +9,33 @@ function getApiBaseUrl() {
   return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
 }
 
+export interface UserOrganization {
+  organization: string
+  role: string
+}
+
 export interface AuthUser {
   user_id: string
   name: string
   email?: string
+  organizations: UserOrganization[]
+}
+
+/** Check if user has access to a specific organization */
+export function hasOrgAccess(user: AuthUser | null, org: string): boolean {
+  if (!user) return false
+  return user.organizations.some(o => o.organization === org)
+}
+
+/** Check if user is an owner of a specific organization */
+export function isOrgOwner(user: AuthUser | null, org: string): boolean {
+  if (!user) return false
+  return user.organizations.some(o => o.organization === org && o.role === 'owner')
+}
+
+/** Check if user has access to the life page (__life org) */
+export function hasLifeAccess(user: AuthUser | null): boolean {
+  return hasOrgAccess(user, '__life')
 }
 
 interface DevicePreferences {
@@ -53,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(`${getApiBaseUrl()}/api/auth/me`, { credentials: 'include' })
         if (res.ok) {
           const data = await res.json()
-          setUser({ user_id: data.user_id, name: data.name, email: data.email })
+          setUser({ user_id: data.user_id, name: data.name, email: data.email, organizations: data.organizations || [] })
         }
       } catch {
         // Not authenticated or server unreachable
@@ -74,6 +97,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  const fetchMe = useCallback(async (): Promise<AuthUser> => {
+    const res = await fetch(`${getApiBaseUrl()}/api/auth/me`, { credentials: 'include' })
+    const data = await res.json()
+    return { user_id: data.user_id, name: data.name, email: data.email, organizations: data.organizations || [] }
+  }, [])
+
   const login = useCallback(async (userId: string, password: string) => {
     const res = await fetch(`${getApiBaseUrl()}/api/auth/login`, {
       method: 'POST',
@@ -85,9 +114,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data.error || 'Login failed')
     }
-    const data = await res.json()
-    setUser({ user_id: data.user_id, name: data.name, email: data.email })
-  }, [])
+    // Fetch full user with organizations from /me
+    const user = await fetchMe()
+    setUser(user)
+  }, [fetchMe])
 
   const register = useCallback(async (userId: string, name: string, password: string) => {
     const res = await fetch(`${getApiBaseUrl()}/api/auth/register`, {
@@ -100,9 +130,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data.error || 'Registration failed')
     }
-    const data = await res.json()
-    setUser({ user_id: data.user_id, name: data.name, email: data.email })
-  }, [])
+    // Fetch full user with organizations from /me
+    const user = await fetchMe()
+    setUser(user)
+  }, [fetchMe])
 
   const logout = useCallback(async () => {
     await fetch(`${getApiBaseUrl()}/api/auth/logout`, {

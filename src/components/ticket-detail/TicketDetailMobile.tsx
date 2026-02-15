@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { X, ArrowLeft, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,8 +14,12 @@ import { TicketRelationships } from './TicketRelationships'
 import { TicketMetadata } from './TicketMetadata'
 import { TicketHistory } from './TicketHistory'
 import { TicketDetailProps } from './TicketDrawer'
+import { TicketDocumentationSection } from './TicketDocumentationSection'
+import { DocumentViewerModal } from './DocumentViewerModal'
 
 export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, onAgentRunChange, onTicketUpdate }: TicketDetailProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const {
     notes,
     setNotes,
@@ -34,6 +39,8 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
     shouldAutoStart,
     reconnectSessionId,
     modalStepId,
+    handleEditPipeline,
+    handleManageDocs,
     handleRunAgent,
     handleRunPipeline,
     handleRetryStep,
@@ -55,6 +62,22 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
       document.body.style.overflow = ''
     }
   }, [isOpen])
+
+  const [viewDocPath, setViewDocPathRaw] = useState<string | null>(
+    () => searchParams.get('doc')
+  )
+
+  const setViewDocPath = useCallback((path: string | null) => {
+    setViewDocPathRaw(path)
+    const params = new URLSearchParams(window.location.search)
+    if (path) {
+      params.set('doc', path)
+    } else {
+      params.delete('doc')
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname
+    router.replace(newUrl, { scroll: false })
+  }, [router])
 
   if (!ticket || !isOpen) return null
 
@@ -79,6 +102,7 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
                 ticket.status === 'completed' && "text-green-500",
                 ticket.status === 'blocked' && "text-destructive",
                 ticket.status === 'in_progress' && "text-blue-500",
+                ticket.status === 'pending-enrichment' && "text-amber-500",
                 (!ticket.status || ticket.status === 'open') && "text-muted-foreground"
               )}>
                 {(ticket.status || 'open').toUpperCase().replace('_', ' ')}
@@ -114,6 +138,15 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
               </div>
             )}
 
+            {/* Documentation Section */}
+            <TicketDocumentationSection
+              documentation={ticket.documentation}
+              onManageDocs={handleManageDocs}
+              onViewDoc={setViewDocPath}
+              isAgentRunning={isAgentRunning}
+              variant="mobile"
+            />
+
             {/* Agent Runs Section */}
             <TicketAgentSection
               agentTypes={agentTypes}
@@ -127,6 +160,7 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
               onRunPipeline={handleRunPipeline}
               onRetryStep={handleRetryStep}
               onViewArchivedRun={handleViewArchivedRun}
+              onEditPipeline={handleEditPipeline}
               variant="mobile"
             />
 
@@ -161,6 +195,14 @@ export function TicketDetailMobile({ ticket, isOpen, onClose, activeAgentRun, on
         onComplete={handleModalComplete}
         agentRuns={agentRuns}
         stepId={modalStepId}
+      />
+
+      {/* Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={!!viewDocPath}
+        onClose={() => setViewDocPath(null)}
+        ticketId={ticket.ticket_id}
+        docPath={viewDocPath}
       />
     </>
   )

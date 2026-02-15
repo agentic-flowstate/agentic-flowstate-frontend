@@ -16,7 +16,7 @@ export interface SidebarContentProps {
   selectedSliceIds: Set<string>
   onEpicToggle: (epicId: string) => void
   onSliceToggle: (sliceId: string) => void
-  viewMode?: 'slice' | 'org'
+  viewMode?: 'slice' | 'org' | 'roadmap'
   compact?: boolean
 }
 

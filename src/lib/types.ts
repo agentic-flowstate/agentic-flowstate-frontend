@@ -1,4 +1,4 @@
-export type TicketStatus = "open" | "in_progress" | "completed" | "blocked" | "closed"
+export type TicketStatus = "open" | "in_progress" | "completed" | "blocked" | "closed" | "pending-enrichment"
 export type TicketType = "task" | "milestone"
 
 export interface Epic {
@@ -43,6 +43,12 @@ export interface Ticket {
   blocks?: string[]
   blocked_by?: string[]
   caused_by?: string[]
+  /** For tasks: the milestone this task belongs to */
+  milestone_id?: string | null
+  /** File path references for agent context */
+  documentation?: string[]
+  /** For milestones: position on the roadmap trunk (0 = top). null/undefined = branch */
+  roadmap_position?: number | null
   created_at: number
   updated_at: number
   created_at_iso: string
@@ -179,7 +185,8 @@ export interface PipelineStep {
 }
 
 export interface Pipeline {
-  template_id?: string
+  origin_template_id?: string
+  customized?: boolean
   steps: PipelineStep[]
   status?: string
   current_step_index?: number

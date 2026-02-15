@@ -29,10 +29,10 @@ export function getCurrentOrg(): OrganizationId | null {
   return stored as OrganizationId | null
 }
 
-export type AgentType = 'vendor-research' | 'technical-research' | 'competitive-research' | 'planning' | 'execution' | 'evaluation' | 'email' | 'ticket-assistant'
+export type AgentType = 'vendor-research' | 'technical-research' | 'competitive-research' | 'planning' | 'execution' | 'evaluation' | 'email' | 'ticket-assistant' | 'pipeline-editor' | 'doc-manager'
 
 /** All valid current agent types */
-export const CURRENT_AGENT_TYPES: AgentType[] = ['vendor-research', 'technical-research', 'competitive-research', 'planning', 'execution', 'evaluation', 'email', 'ticket-assistant']
+export const CURRENT_AGENT_TYPES: AgentType[] = ['vendor-research', 'technical-research', 'competitive-research', 'planning', 'execution', 'evaluation', 'email', 'ticket-assistant', 'pipeline-editor', 'doc-manager']
 
 /** Check if a string is a valid current AgentType */
 export function isValidAgentType(type: string): type is AgentType {
@@ -152,6 +152,10 @@ export function getAgentTypeInfo(type: AgentType): {
       return { label: 'Email', description: 'Generate email draft', color: 'text-cyan-500' }
     case 'ticket-assistant':
       return { label: 'Ticket Assistant', description: 'Answer questions and provide guidance', color: 'text-emerald-500' }
+    case 'pipeline-editor':
+      return { label: 'Pipeline Editor', description: 'Edit pipeline steps', color: 'text-indigo-500' }
+    case 'doc-manager':
+      return { label: 'Doc Manager', description: 'Manage documentation references', color: 'text-teal-500' }
   }
 }
 

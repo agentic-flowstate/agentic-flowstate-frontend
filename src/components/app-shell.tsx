@@ -3,10 +3,10 @@
 import React from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Mail, LayoutDashboard, Video, Bot, User, ChevronDown, LogOut, Heart } from 'lucide-react'
+import { Mail, LayoutDashboard, Video, Bot, User, ChevronDown, LogOut, Heart, Volume2 } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useOrganization } from '@/contexts/organization-context'
-import { useAuth } from '@/contexts/auth-context'
+import { useAuth, hasLifeAccess } from '@/contexts/auth-context'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -79,6 +79,18 @@ export function AppShell({ children }: AppShellProps) {
                 Meetings
               </Link>
               <Link
+                href="/tts"
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
+                  pathname === '/tts'
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                )}
+              >
+                <Volume2 className="h-3.5 w-3.5" />
+                TTS
+              </Link>
+              <Link
                 href="/workspace-manager"
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors",
@@ -90,7 +102,7 @@ export function AppShell({ children }: AppShellProps) {
                 <Bot className="h-3.5 w-3.5" />
                 Planner
               </Link>
-              {user?.user_id === 'alex' && (
+              {hasLifeAccess(user) && (
                 <Link
                   href="/life"
                   className={cn(

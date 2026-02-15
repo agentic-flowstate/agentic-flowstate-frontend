@@ -1,12 +1,12 @@
 "use client"
 
-import React, { useState, useCallback, Suspense } from 'react'
+import React, { useState, useCallback, useEffect, Suspense } from 'react'
 import { Heart, Send, Loader2, AlertCircle, PanelLeft, MessageSquare, CalendarCheck } from 'lucide-react'
-import { redirect } from 'next/navigation'
+import { redirect, useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { useAuth } from '@/contexts/auth-context'
+import { useAuth, hasLifeAccess } from '@/contexts/auth-context'
 import { MessageRenderer } from '@/components/message-renderer'
 import { ConversationSidebar } from '@/components/conversation-sidebar'
 import { useConversationChat } from '@/hooks/useConversationChat'
@@ -30,7 +30,7 @@ function enrichMessageWithTimestamp(message: string): string {
 function LifeContent() {
   const { user } = useAuth()
 
-  if (user?.user_id !== 'alex') {
+  if (!hasLifeAccess(user)) {
     redirect('/workspace')
   }
 
@@ -41,8 +41,37 @@ function LifeContent() {
     enrichMessage: enrichMessageWithTimestamp,
   })
 
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
   const [mobileView, setMobileView] = useState<'plan' | 'chat'>('chat')
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null)
+
+  // Restore ticket from URL on mount
+  useEffect(() => {
+    const ticketId = searchParams.get('ticket')
+    if (ticketId && !selectedTicket) {
+      getTicketById(ticketId).then(ticket => {
+        if (ticket) setSelectedTicket(ticket)
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync selected ticket to URL
+  const selectedTicketId = selectedTicket?.ticket_id ?? null
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const currentParam = params.get('ticket')
+    if (currentParam === selectedTicketId) return // already in sync
+    if (selectedTicketId) {
+      params.set('ticket', selectedTicketId)
+    } else {
+      params.delete('ticket')
+    }
+    const newUrl = params.toString() ? `/life?${params.toString()}` : '/life'
+    router.replace(newUrl, { scroll: false })
+  }, [selectedTicketId, searchParams, router])
 
   const handleTicketClick = useCallback(async (item: WorkloadItem) => {
     const ticket = await getTicketById(item.ticket_id)
@@ -50,6 +79,7 @@ function LifeContent() {
   }, [])
 
   const handleCloseDrawer = useCallback(() => setSelectedTicket(null), [])
+  const handleTicketUpdate = useCallback((ticket: Ticket) => setSelectedTicket(ticket), [])
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -68,7 +98,7 @@ function LifeContent() {
 
       {/* Daily Plan Sidebar - desktop only */}
       <div className="hidden md:flex w-72 border-r flex-col bg-background overflow-hidden">
-        <DailyPlanSidebar onTicketClick={handleTicketClick} />
+        <DailyPlanSidebar onTicketClick={handleTicketClick} selectedTicketId={selectedTicket?.ticket_id} />
       </div>
 
       {/* Mobile view toggle */}
@@ -98,7 +128,7 @@ function LifeContent() {
 
         {mobileView === 'plan' ? (
           <div className="flex-1 overflow-hidden">
-            <DailyPlanSidebar onTicketClick={handleTicketClick} />
+            <DailyPlanSidebar onTicketClick={handleTicketClick} selectedTicketId={selectedTicket?.ticket_id} />
           </div>
         ) : (
           <ChatPanel chat={chat} onOpenConversations={() => chat.setSidebarOpen(true)} />
@@ -106,7 +136,7 @@ function LifeContent() {
       </div>
 
       {/* Ticket detail drawer */}
-      <TicketDetail ticket={selectedTicket} isOpen={!!selectedTicket} onClose={handleCloseDrawer} />
+      <TicketDetail ticket={selectedTicket} isOpen={!!selectedTicket} onClose={handleCloseDrawer} onTicketUpdate={handleTicketUpdate} />
 
       {/* Desktop chat area */}
       <div className="hidden md:flex flex-1 flex-col bg-background overflow-hidden min-w-0">

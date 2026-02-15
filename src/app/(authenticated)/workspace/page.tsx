@@ -2,11 +2,11 @@
 
 import React, { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { Menu, GitBranch, Network, Search, X } from 'lucide-react'
+import { Menu, GitBranch, Network, Search, X, Map } from 'lucide-react'
 import { Sidebar } from '@/components/sidebar'
 import { TicketDetail } from '@/components/ticket-detail'
 import { AssigneeFilter } from '@/components/assignee-filter'
-import { SliceGraphWithApproval, OrgGraph } from '@/components/slice-graph'
+import { SliceGraphWithApproval, OrgGraph, RoadmapGraph } from '@/components/slice-graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getEpics, getSlices, getTickets, getTicketById, getAllOrgTickets } from '@/lib/api/tickets'
@@ -16,7 +16,7 @@ import { useOrganization } from '@/contexts/organization-context'
 import { useAgentState } from '@/contexts/agent-state-context'
 import { useLiveData } from '@/hooks/useLiveData'
 
-type ViewMode = 'slice' | 'org'
+type ViewMode = 'slice' | 'org' | 'roadmap'
 
 // Helper to parse comma-separated URL params into a Set
 function parseSetParam(param: string | null): Set<string> {
@@ -86,7 +86,7 @@ function WorkspaceContent() {
   // Persist in URL to survive page reload
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const urlView = searchParams.get('view')
-    if (urlView === 'slice' || urlView === 'org') return urlView
+    if (urlView === 'slice' || urlView === 'org' || urlView === 'roadmap') return urlView
     // Fallback: if no view param but has epic/slice selections, use slice view
     const hasEpics = searchParams.get('epics')
     const hasSlices = searchParams.get('slices')
@@ -175,21 +175,44 @@ function WorkspaceContent() {
       return updated
     })
 
-    // Also update orgTickets - merge new status into existing tickets while preserving pipelines
+    // Also update orgTickets - merge SSE data including pipeline changes
+    const ticketLookup: Record<string, Ticket> = {}
+    for (const t of newTickets) ticketLookup[t.ticket_id] = t
     setOrgTickets(prev => {
       if (prev.length === 0) return prev
-      const ticketMap = new Map(newTickets.map(t => [t.ticket_id, t]))
       let changed = false
       const result = prev.map(existing => {
-        const updated = ticketMap.get(existing.ticket_id)
+        const updated = ticketLookup[existing.ticket_id]
         if (updated && updated.updated_at !== existing.updated_at) {
           changed = true
-          // Merge: keep existing pipeline data, update status and other fields
-          return { ...existing, ...updated, pipeline: existing.pipeline }
+          return { ...existing, ...updated }
         }
         return existing
       })
       return changed ? result : prev
+    })
+
+    // Update selectedTicket if SSE has newer data for the currently-viewed ticket
+    setSelectedTicket(prev => {
+      if (!prev) return prev
+      const updated = ticketLookup[prev.ticket_id]
+      if (updated && updated.updated_at !== prev.updated_at) {
+        return { ...prev, ...updated }
+      }
+      return prev
+    })
+
+    // Sync fetchedPipelines from SSE data so graphTickets updates immediately
+    setFetchedPipelines(prev => {
+      let changed = false
+      const updated = { ...prev }
+      for (const ticket of newTickets) {
+        if (ticket.pipeline && ticket.pipeline !== prev[ticket.ticket_id]) {
+          updated[ticket.ticket_id] = ticket.pipeline
+          changed = true
+        }
+      }
+      return changed ? updated : prev
     })
   }, [])
 
@@ -226,7 +249,6 @@ function WorkspaceContent() {
     if (activeAgentRun) {
       params.set('run', activeAgentRun)
     }
-
     const newUrl = params.toString() ? `?${params.toString()}` : '/workspace'
     router.replace(newUrl, { scroll: false })
   }, [selectedEpicIds, selectedSliceIds, focusedTicket, selectedAssignee, activeAgentRun, viewMode, router])
@@ -393,9 +415,10 @@ function WorkspaceContent() {
             } else {
               // Merge: for each API ticket, preserve richer existing data (from SSE)
               // but add any new tickets the API returned that we didn't have
-              const existingMap = new Map(existing.map(t => [t.ticket_id, t]))
+              const existingLookup: Record<string, Ticket> = {}
+              for (const t of existing) existingLookup[t.ticket_id] = t
               const merged = tickets.map(apiTicket => {
-                const sseTicket = existingMap.get(apiTicket.ticket_id)
+                const sseTicket = existingLookup[apiTicket.ticket_id]
                 if (sseTicket && sseTicket.blocked_by) {
                   // SSE ticket has relationship data — keep it, overlay any newer status
                   return { ...sseTicket, status: apiTicket.status, title: apiTicket.title }
@@ -493,7 +516,7 @@ function WorkspaceContent() {
   // Load all org tickets when in org view mode
   useEffect(() => {
     async function loadOrgTickets() {
-      if (viewMode !== 'org' || !selectedOrg) {
+      if ((viewMode !== 'org' && viewMode !== 'roadmap') || !selectedOrg) {
         return
       }
 
@@ -890,6 +913,16 @@ function WorkspaceContent() {
               <Network className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Org View</span>
             </Button>
+            <Button
+              variant={viewMode === 'roadmap' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => setViewMode(viewMode === 'roadmap' ? 'slice' : 'roadmap')}
+              title={viewMode === 'roadmap' ? 'Switch to slice view' : 'Roadmap view'}
+            >
+              <Map className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Roadmap</span>
+            </Button>
             <AssigneeFilter
               availableAssignees={availableAssignees}
               selectedAssignee={selectedAssignee}
@@ -900,8 +933,8 @@ function WorkspaceContent() {
 
         {/* Content area */}
         <div className="flex-1 overflow-auto">
-          {/* Org View - show all tickets for the organization */}
-          {viewMode === 'org' ? (
+          {/* Org View or Roadmap View - show all tickets for the organization */}
+          {(viewMode === 'org' || viewMode === 'roadmap') ? (
             <div className="h-full flex flex-col">
               <div className="flex-1 min-h-0">
                 {isLoadingOrgTickets ? (
@@ -918,6 +951,17 @@ function WorkspaceContent() {
                       <p className="text-sm">No tickets in this organization</p>
                     </div>
                   </div>
+                ) : viewMode === 'roadmap' ? (
+                  <RoadmapGraph
+                    tickets={orgTickets}
+                    epics={epics}
+                    slices={Object.values(slicesByEpic).flat()}
+                    selectedTicketId={focusedTicket}
+                    centerOnTicketId={centerOnTicketId}
+                    processingTicketIds={processingTicketIds}
+                    onTicketClick={handleGraphTicketClick}
+                    onPaneClick={handleCloseDrawer}
+                  />
                 ) : (
                   <OrgGraph
                     tickets={orgTickets}

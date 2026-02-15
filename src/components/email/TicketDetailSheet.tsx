@@ -43,6 +43,7 @@ export function TicketDetailSheet({
                   ticket.status === 'completed' && "text-green-500",
                   ticket.status === 'blocked' && "text-destructive",
                   ticket.status === 'in_progress' && "text-blue-500",
+                  ticket.status === 'pending-enrichment' && "text-amber-500",
                   (!ticket.status || ticket.status === 'open') && "text-muted-foreground"
                 )}>
                   {(ticket.status || 'open').toUpperCase().replace('_', ' ')}

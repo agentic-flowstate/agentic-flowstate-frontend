@@ -19,8 +19,9 @@ import {
   XCircle,
   Pencil,
   Star,
+  Trash2,
 } from 'lucide-react'
-import { listMeetings, generateRoomId, endMeeting, updateMeeting, toggleMeetingFavorite, Meeting } from '@/lib/api/meetings'
+import { listMeetings, generateRoomId, endMeeting, deleteMeeting, updateMeeting, toggleMeetingFavorite, Meeting } from '@/lib/api/meetings'
 import { getTranscriptSession } from '@/lib/api/transcripts'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -189,6 +190,20 @@ function MeetingsPageContent() {
       }
     } catch (err) {
       console.error('Failed to toggle favorite:', err)
+    }
+  }
+
+  async function handleDeleteMeeting(e: React.MouseEvent, meeting: Meeting) {
+    e.stopPropagation()
+    if (!confirm(`Delete "${meeting.title || meeting.room_id}"? This cannot be undone.`)) return
+    try {
+      await deleteMeeting(meeting.room_id)
+      if (selectedMeeting?.room_id === meeting.room_id) {
+        handleCloseSidebar()
+      }
+      setMeetings(prev => prev.filter(m => m.room_id !== meeting.room_id))
+    } catch (err) {
+      console.error('Failed to delete meeting:', err)
     }
   }
 
@@ -443,9 +458,17 @@ function MeetingsPageContent() {
                           </div>
                         </div>
                       </div>
-                      {processing && (
-                        <Loader2 className="h-4 w-4 text-amber-500 dark:text-amber-400 animate-spin" />
-                      )}
+                      <div className="flex items-center gap-1">
+                        {processing && (
+                          <Loader2 className="h-4 w-4 text-amber-500 dark:text-amber-400 animate-spin" />
+                        )}
+                        <button
+                          onClick={(e) => handleDeleteMeeting(e, meeting)}
+                          className="p-1.5 rounded-md text-muted-foreground/40 hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </button>
                   )
@@ -518,14 +541,24 @@ function MeetingsPageContent() {
               )}
               <p className="text-xs text-muted-foreground">{formatDate(selectedMeeting.created_at)}</p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCloseSidebar}
-              className="text-muted-foreground hover:text-foreground hover:bg-accent"
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => handleDeleteMeeting(e, selectedMeeting)}
+                className="text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseSidebar}
+                className="text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           {/* Processing Pipeline Indicator */}

@@ -4,6 +4,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Calendar, ChevronLeft, ChevronRight, Loader2, ListChecks, Briefcase, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useOrganization } from '@/contexts/organization-context'
+import { getTicketById } from '@/lib/api/tickets'
+import { getActiveAgentRun, AGENT_API_BASE } from '@/lib/api/agents'
+import type { Ticket } from '@/lib/types'
 
 interface PlanItem {
   item_id: string
@@ -28,13 +32,6 @@ export interface WorkloadItem {
   checked: boolean
   added_at: number
 }
-
-const PROJECTS = [
-  { org: 'agentic-flowstate', label: 'Agentic Flowstate' },
-  { org: 'election-education', label: 'Election Education' },
-  { org: 'ballotradar', label: 'BallotRadar' },
-  { org: 'telemetryops', label: 'TelemetryOps' },
-] as const
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T12:00:00')
@@ -61,32 +58,93 @@ function formatTime(time: string): string {
 
 interface DailyPlanSidebarProps {
   onTicketClick?: (item: WorkloadItem) => void
+  selectedTicketId?: string | null
 }
 
-export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
+export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanSidebarProps) {
+  const { organizations } = useOrganization()
   const [selectedDate, setSelectedDate] = useState(getTodayDate)
   const [plan, setPlan] = useState<DailyPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set())
   const [workload, setWorkload] = useState<WorkloadItem[]>([])
-  const [pullingOrg, setPullingOrg] = useState<string | null>(null)
+  const [pullingOrgs, setPullingOrgs] = useState<Set<string>>(new Set())
+  const [processingTicketIds, setProcessingTicketIds] = useState<Set<string>>(new Set())
 
   const isToday = selectedDate === getTodayDate()
 
-  const fetchPlan = useCallback(async (date: string) => {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/life/daily-plan?date=${date}`)
-      if (res.ok) {
-        const data: DailyPlan = await res.json()
-        setPlan(data)
-      }
-    } catch (e) {
-      console.error('Failed to fetch daily plan:', e)
-    } finally {
-      setLoading(false)
+  // SSE subscription for real-time daily plan updates
+  useEffect(() => {
+    let controller: AbortController | null = null
+    let reconnectTimeout: NodeJS.Timeout | null = null
+
+    const connect = () => {
+      setLoading(true)
+      controller = new AbortController()
+
+      fetch(`/api/life/daily-plan/subscribe?date=${selectedDate}`, {
+        credentials: 'include',
+        headers: { 'Accept': 'text/event-stream' },
+        signal: controller.signal,
+      }).then(async (response) => {
+        const reader = response.body?.getReader()
+        if (!reader) return
+
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const data = line.slice(6)
+                if (!data) continue
+
+                try {
+                  const parsed = JSON.parse(data)
+                  if (parsed.type === 'sync' && parsed.plan) {
+                    setPlan(parsed.plan)
+                    setLoading(false)
+                  }
+                } catch (e) {
+                  console.error('Failed to parse daily plan SSE:', e)
+                }
+              }
+            }
+          }
+        } catch (e) {
+          if ((e as Error).name !== 'AbortError') {
+            console.error('Daily plan SSE error:', e)
+          }
+        }
+
+        // Reconnect if not intentionally aborted
+        if (!controller?.signal.aborted) {
+          setLoading(false)
+          reconnectTimeout = setTimeout(connect, 5000)
+        }
+      }).catch((e) => {
+        if ((e as Error).name !== 'AbortError') {
+          console.error('Daily plan SSE fetch error:', e)
+          setLoading(false)
+          reconnectTimeout = setTimeout(connect, 5000)
+        }
+      })
     }
-  }, [])
+
+    connect()
+    return () => {
+      controller?.abort()
+      if (reconnectTimeout) clearTimeout(reconnectTimeout)
+    }
+  }, [selectedDate])
 
   const fetchWorkload = useCallback(async () => {
     try {
@@ -101,12 +159,113 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
   }, [])
 
   useEffect(() => {
-    fetchPlan(selectedDate)
-  }, [selectedDate, fetchPlan])
-
-  useEffect(() => {
     fetchWorkload()
   }, [fetchWorkload])
+
+  // Build lookup of workload ticket IDs for fast SSE filtering
+  const workloadTicketIds = useMemo(() => new Set(workload.map(w => w.ticket_id)), [workload])
+
+  // Track processing state via initial fetch + SSE for real-time updates
+  useEffect(() => {
+    if (workload.length === 0) return
+
+    const controllers: AbortController[] = []
+
+    // Initial fetch: check pipeline steps + active agent runs
+    async function initialCheck() {
+      const running = new Set<string>()
+      await Promise.all(
+        workload.map(async (w) => {
+          try {
+            const ticket = await getTicketById(w.ticket_id)
+            if (ticket?.pipeline?.steps?.some(s => s.status === 'running')) {
+              running.add(w.ticket_id)
+              return
+            }
+            const activeRun = await getActiveAgentRun(w.epic_id, w.slice_id, w.ticket_id)
+            if (activeRun) running.add(w.ticket_id)
+          } catch { /* ignore */ }
+        })
+      )
+      setProcessingTicketIds(running)
+    }
+
+    initialCheck()
+
+    // SSE: subscribe to each org for real-time ticket updates
+    const orgs = [...new Set(workload.map(w => w.organization))]
+
+    for (const org of orgs) {
+      const controller = new AbortController()
+      controllers.push(controller)
+
+      const url = `${AGENT_API_BASE}/api/data/subscribe?organization=${encodeURIComponent(org)}`
+
+      function connectSSE() {
+        if (controller.signal.aborted) return
+
+        fetch(url, {
+          credentials: 'include',
+          headers: { 'Accept': 'text/event-stream' },
+          signal: controller.signal,
+        }).then(async (response) => {
+          const reader = response.body?.getReader()
+          if (!reader) return
+
+          const decoder = new TextDecoder()
+          let buffer = ''
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const chunks = buffer.split('\n\n')
+            buffer = chunks.pop() || ''
+
+            for (const chunk of chunks) {
+              if (!chunk.startsWith('data: ')) continue
+              try {
+                const data = JSON.parse(chunk.slice(6))
+                if (data.type === 'tickets' && data.tickets) {
+                  const tickets = data.tickets as Ticket[]
+                  setProcessingTicketIds(prev => {
+                    const next = new Set(prev)
+                    let changed = false
+                    for (const ticket of tickets) {
+                      if (!workloadTicketIds.has(ticket.ticket_id)) continue
+                      const isRunning = ticket.pipeline?.steps?.some(s => s.status === 'running') ?? false
+                      if (isRunning && !prev.has(ticket.ticket_id)) {
+                        next.add(ticket.ticket_id)
+                        changed = true
+                      } else if (!isRunning && prev.has(ticket.ticket_id)) {
+                        next.delete(ticket.ticket_id)
+                        changed = true
+                      }
+                    }
+                    return changed ? next : prev
+                  })
+                }
+              } catch { /* ignore parse errors */ }
+            }
+          }
+
+          // Reconnect if not aborted
+          if (!controller.signal.aborted) {
+            setTimeout(connectSSE, 5000)
+          }
+        }).catch((e) => {
+          if ((e as Error).name !== 'AbortError' && !controller.signal.aborted) {
+            setTimeout(connectSSE, 5000)
+          }
+        })
+      }
+
+      connectSSE()
+    }
+
+    return () => controllers.forEach(c => c.abort())
+  }, [workload, workloadTicketIds])
 
   const goBack = () => setSelectedDate(prev => shiftDate(prev, -1))
   const goForward = () => setSelectedDate(prev => shiftDate(prev, 1))
@@ -126,16 +285,14 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
     })
 
     try {
-      const res = await fetch('/api/life/daily-plan/toggle', {
+      await fetch('/api/life/daily-plan/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_id: item.item_id, date: selectedDate }),
       })
-      if (!res.ok) {
-        fetchPlan(selectedDate)
-      }
-    } catch {
-      fetchPlan(selectedDate)
+      // SSE will push the corrected state
+    } catch (e) {
+      console.error('Failed to toggle item:', e)
     } finally {
       setTogglingItems(prev => {
         const next = new Set(prev)
@@ -146,7 +303,7 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
   }
 
   const pullTicket = async (org: string) => {
-    setPullingOrg(org)
+    setPullingOrgs(prev => new Set(prev).add(org))
     try {
       const res = await fetch('/api/life/project-workload/pull', {
         method: 'POST',
@@ -160,7 +317,7 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
     } catch (e) {
       console.error('Failed to pull ticket:', e)
     } finally {
-      setPullingOrg(null)
+      setPullingOrgs(prev => { const next = new Set(prev); next.delete(org); return next })
     }
   }
 
@@ -334,7 +491,7 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
               <div className="flex-1 h-px bg-border/50 ml-1" />
             </div>
             <div className="space-y-2 ml-1">
-              {PROJECTS.map(({ org, label }) => {
+              {organizations.map(({ id: org, displayName: label }) => {
                 const items = workload.filter(w => w.organization === org)
                 return (
                   <div key={org}>
@@ -344,11 +501,11 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
                       </span>
                       <button
                         onClick={() => pullTicket(org)}
-                        disabled={pullingOrg !== null}
+                        disabled={pullingOrgs.has(org)}
                         className="ml-auto p-0.5 rounded hover:bg-accent/50 text-muted-foreground/50 hover:text-muted-foreground transition-colors disabled:opacity-30"
                         title="Pull next ticket"
                       >
-                        {pullingOrg === org ? (
+                        {pullingOrgs.has(org) ? (
                           <Loader2 className="h-3 w-3 animate-spin" />
                         ) : (
                           <Plus className="h-3 w-3" />
@@ -357,32 +514,42 @@ export function DailyPlanSidebar({ onTicketClick }: DailyPlanSidebarProps) {
                     </div>
                     {items.length > 0 && (
                       <div className="space-y-0.5">
-                        {items.map((item) => (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              "flex items-start gap-2 px-2 py-1 rounded text-xs hover:bg-accent/50 transition-colors",
-                              item.checked && "text-muted-foreground"
-                            )}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={item.checked}
-                              onChange={() => toggleWorkloadItem(item)}
-                              disabled={togglingItems.has(item.id)}
-                              className="mt-0.5 rounded border-muted-foreground/30 cursor-pointer"
-                            />
-                            <button
-                              onClick={() => onTicketClick?.(item)}
+                        {items.map((item) => {
+                          const isSelected = item.ticket_id === selectedTicketId
+                          const isProcessing = processingTicketIds.has(item.ticket_id)
+                          return (
+                            <div
+                              key={item.id}
                               className={cn(
-                                "flex-1 min-w-0 text-left cursor-pointer hover:underline",
-                                item.checked && "line-through opacity-60"
+                                "flex items-start gap-2 px-2 py-1 rounded text-xs transition-colors",
+                                isSelected
+                                  ? "bg-primary/15 ring-1 ring-primary/30"
+                                  : "hover:bg-accent/50",
+                                item.checked && "text-muted-foreground"
                               )}
                             >
-                              {item.ticket_title}
-                            </button>
-                          </div>
-                        ))}
+                              <input
+                                type="checkbox"
+                                checked={item.checked}
+                                onChange={() => toggleWorkloadItem(item)}
+                                disabled={togglingItems.has(item.id)}
+                                className="mt-0.5 rounded border-muted-foreground/30 cursor-pointer"
+                              />
+                              <button
+                                onClick={() => onTicketClick?.(item)}
+                                className={cn(
+                                  "flex-1 min-w-0 text-left cursor-pointer hover:underline",
+                                  item.checked && "line-through opacity-60"
+                                )}
+                              >
+                                {item.ticket_title}
+                              </button>
+                              {isProcessing && (
+                                <Loader2 className="h-3 w-3 animate-spin text-blue-400 flex-shrink-0 mt-0.5" />
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

@@ -13,7 +13,7 @@ export interface SidebarProps {
   selectedSliceIds: Set<string>
   onEpicToggle: (epicId: string) => void
   onSliceToggle: (sliceId: string) => void
-  viewMode?: 'slice' | 'org'
+  viewMode?: 'slice' | 'org' | 'roadmap'
 }
 
 const SIDEBAR_DEFAULT_WIDTH = 280

@@ -1,6 +1,7 @@
 "use client"
 
-import React from 'react'
+import React, { useState, useCallback } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { X, FileText } from 'lucide-react'
 import { Ticket } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -14,6 +15,8 @@ import { TicketRelationships } from './TicketRelationships'
 import { TicketMetadata } from './TicketMetadata'
 import { TicketHistory } from './TicketHistory'
 import { TicketGuidanceSection } from './TicketGuidanceSection'
+import { TicketDocumentationSection } from './TicketDocumentationSection'
+import { DocumentViewerModal } from './DocumentViewerModal'
 
 export interface TicketDetailProps {
   ticket: Ticket | null
@@ -25,6 +28,8 @@ export interface TicketDetailProps {
 }
 
 export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentRunChange, onTicketUpdate }: TicketDetailProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const {
     notes,
     setNotes,
@@ -45,6 +50,8 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
     reconnectSessionId,
     modalStepId,
     handleOpenAssistant,
+    handleEditPipeline,
+    handleManageDocs,
     handleRunAgent,
     handleRunPipeline,
     handleRetryStep,
@@ -54,6 +61,22 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
     handleViewArchivedRun,
     handleHistoryRunClick,
   } = useTicketDetail({ ticket, isOpen, activeAgentRun, onAgentRunChange, onTicketUpdate })
+
+  const [viewDocPath, setViewDocPathRaw] = useState<string | null>(
+    () => searchParams.get('doc')
+  )
+
+  const setViewDocPath = useCallback((path: string | null) => {
+    setViewDocPathRaw(path)
+    const params = new URLSearchParams(window.location.search)
+    if (path) {
+      params.set('doc', path)
+    } else {
+      params.delete('doc')
+    }
+    const newUrl = params.toString() ? `?${params.toString()}` : window.location.pathname
+    router.replace(newUrl, { scroll: false })
+  }, [router])
 
   if (!ticket) return null
 
@@ -77,6 +100,7 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
               ticket.status === 'completed' && "text-green-500",
               ticket.status === 'blocked' && "text-destructive",
               ticket.status === 'in_progress' && "text-blue-500",
+              ticket.status === 'pending-enrichment' && "text-amber-500",
               (!ticket.status || ticket.status === 'open') && "text-muted-foreground"
             )}>
               {(ticket.status || 'open').toUpperCase().replace('_', ' ')}
@@ -118,6 +142,15 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
               onTicketUpdate={onTicketUpdate}
             />
 
+            {/* Documentation Section */}
+            <TicketDocumentationSection
+              documentation={ticket.documentation}
+              onManageDocs={handleManageDocs}
+              onViewDoc={setViewDocPath}
+              isAgentRunning={isAgentRunning}
+              variant="desktop"
+            />
+
             {/* Agent Runs Section */}
             <TicketAgentSection
               agentTypes={agentTypes}
@@ -131,6 +164,7 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
               onRunPipeline={handleRunPipeline}
               onRetryStep={handleRetryStep}
               onViewArchivedRun={handleViewArchivedRun}
+              onEditPipeline={handleEditPipeline}
               variant="desktop"
             />
 
@@ -166,6 +200,14 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
         agentRuns={agentRuns}
         onTicketUpdate={onTicketUpdate}
         stepId={modalStepId}
+      />
+
+      {/* Document Viewer Modal */}
+      <DocumentViewerModal
+        isOpen={!!viewDocPath}
+        onClose={() => setViewDocPath(null)}
+        ticketId={ticket.ticket_id}
+        docPath={viewDocPath}
       />
     </>
   )
