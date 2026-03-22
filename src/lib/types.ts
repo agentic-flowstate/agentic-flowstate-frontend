@@ -1,4 +1,4 @@
-export type TicketStatus = "open" | "in_progress" | "completed" | "blocked" | "closed" | "pending-enrichment"
+export type TicketStatus = "open" | "in_progress" | "done" | "blocked"
 export type TicketType = "task" | "milestone"
 
 export interface Epic {
@@ -37,7 +37,6 @@ export interface Ticket {
   status: TicketStatus
   assignee?: string
   agent?: string
-  pipeline?: Pipeline
   repository?: string
   artifact_path?: string
   blocks?: string[]
@@ -45,10 +44,56 @@ export interface Ticket {
   caused_by?: string[]
   /** For tasks: the milestone this task belongs to */
   milestone_id?: string | null
-  /** File path references for agent context */
+  /** Artifact IDs for attached documentation */
   documentation?: string[]
   /** For milestones: position on the roadmap trunk (0 = top). null/undefined = branch */
   roadmap_position?: number | null
+  created_at: number
+  updated_at: number
+  created_at_iso: string
+  updated_at_iso: string
+}
+
+export interface ArtifactDocSummary {
+  artifact_id: string
+  title: string
+  artifact_type: string
+}
+
+export interface ArtifactSummary {
+  artifact_id: string
+  title: string
+  artifact_type: string
+  created_by: string
+  source_step_id?: string
+  organization: string
+  epic_id?: string
+  slice_id?: string
+  ticket_id?: string
+  agent_run_id?: string
+  content_length: number
+  created_at: number
+  updated_at: number
+  created_at_iso: string
+  updated_at_iso: string
+}
+
+export interface Artifact extends Omit<ArtifactSummary, 'content_length'> {
+  content: string
+}
+
+export interface DocumentSummary {
+  document_id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  description?: string
+  document_type: string
+  organization: string
+  epic_id?: string
+  slice_id?: string
+  ticket_id?: string
+  created_by: string
   created_at: number
   updated_at: number
   created_at_iso: string
@@ -95,10 +140,36 @@ export interface Email {
   created_at_iso: string
 }
 
+export interface EmailAttachment {
+  id: number
+  email_id: number
+  filename: string
+  content_type: string
+  size_bytes: number
+  stored_path?: string
+}
+
 export interface EmailListResponse {
   emails: Email[]
   total: number
   unread: number
+}
+
+export interface EmailAccount {
+  id: number
+  user_id: string
+  email: string
+  imap_host: string
+  imap_port: number
+  aws_profile?: string
+  aws_region: string
+  display_name?: string
+  is_active: boolean
+  last_fetch_at_iso?: string
+  last_fetch_status?: string
+  last_fetch_error?: string
+  created_at_iso: string
+  updated_at_iso: string
 }
 
 export interface TranscriptSession {
@@ -167,53 +238,31 @@ export interface ThreadTicketsResponse {
   tickets: EmailThreadTicket[]
 }
 
-// Pipeline Types (matches backend models.rs)
-export type PipelineStepStatus = "queued" | "running" | "awaiting_approval" | "completed" | "failed" | "skipped"
-export type ExecutionType = "auto" | "manual"
-
-export interface PipelineStep {
-  step_id: string
-  agent_type: string
-  execution_type: ExecutionType
-  status: PipelineStepStatus
-  inputs?: Record<string, unknown>
-  outputs?: Record<string, unknown>
-  agent_run_id?: string
-  started_at?: string
-  completed_at?: string
-  name?: string
+export interface EmailThread {
+  thread_id: string
+  subject?: string
+  participants: string[]
+  message_count: number
+  unread_count: number
+  latest_received_at: number
+  latest_received_at_iso: string
+  latest_snippet?: string
 }
 
-export interface Pipeline {
-  origin_template_id?: string
-  customized?: boolean
-  steps: PipelineStep[]
-  status?: string
-  current_step_index?: number
-}
-
-// Alias for backward compatibility
-export type TicketPipeline = Pipeline
-
-export interface PipelineStepDetail {
-  step: PipelineStep
-  agent_run?: {
-    run_id: string
-    status: string
-    outputs?: Record<string, unknown>
-    tool_calls?: Array<{
-      tool_name: string
-      arguments: Record<string, unknown>
-      result?: unknown
-    }>
-    error?: string
-  }
+export interface SystemLog {
+  id: number
+  level: string
+  component: string
+  message: string
+  detail?: string
+  user_id?: string
+  session_id?: string
+  created_at: number
+  created_at_iso: string
 }
 
 // Graph types for React Flow
-export interface GraphTicket extends Ticket {
-  // pipeline already inherited from Ticket
-}
+export interface GraphTicket extends Ticket {}
 
 export interface CrossSliceDependency {
   ticket_id: string

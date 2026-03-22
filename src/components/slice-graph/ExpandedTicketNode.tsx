@@ -2,8 +2,8 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
-import type { GraphTicket, PipelineStep } from '@/lib/types'
-import { getAgentIcon, getAgentName, getCrossSliceDependencies } from './utils'
+import type { GraphTicket } from '@/lib/types'
+import { getCrossSliceDependencies } from './utils'
 import { cn } from '@/lib/utils'
 import { CopyTicketId } from '@/components/copy-ticket-id'
 
@@ -12,82 +12,11 @@ interface ExpandedTicketNodeData {
   expanded: boolean
   status: 'completed' | 'in-progress' | 'blocked' | 'queued'
   allTickets?: GraphTicket[]
-  onStepClick?: (ticket: GraphTicket, step: PipelineStep) => void
   onCrossSliceClick?: (ticketId: string, sliceId: string) => void
 }
 
-function StepRow({
-  step,
-  onClick,
-}: {
-  step: PipelineStep
-  onClick?: () => void
-}) {
-  const statusClasses = {
-    completed: 'bg-green-700 border-green-500',
-    running: 'bg-blue-800 border-blue-500 animate-pulse',
-    awaiting_approval: 'bg-amber-800 border-amber-500 animate-pulse cursor-pointer hover:bg-amber-700',
-    queued: 'bg-zinc-800 border-zinc-600',
-    failed: 'bg-red-800 border-red-500',
-    skipped: 'bg-zinc-700 border-zinc-500 opacity-50',
-  }
-
-  const statusTextClasses = {
-    completed: 'text-green-400',
-    running: 'text-blue-400',
-    awaiting_approval: 'text-amber-400',
-    queued: 'text-zinc-500',
-    failed: 'text-red-400',
-    skipped: 'text-zinc-500',
-  }
-
-  const statusLabels = {
-    completed: '✓ Completed',
-    running: '▶ Running...',
-    awaiting_approval: '⏳ Awaiting',
-    queued: '○ Queued',
-    failed: '✗ Failed',
-    skipped: '⊘ Skipped',
-  }
-
-  const typeClasses = step.execution_type === 'manual' ? 'border-dashed' : 'border-solid'
-  const isClickable = step.status === 'awaiting_approval'
-
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2.5 py-1.5 border-b border-zinc-800 last:border-b-0',
-        isClickable && 'cursor-pointer hover:bg-zinc-800/50 rounded -mx-1 px-1'
-      )}
-      onClick={isClickable ? onClick : undefined}
-    >
-      <div
-        className={cn(
-          'w-[26px] h-[26px] rounded-md flex items-center justify-center text-[13px] border',
-          statusClasses[step.status],
-          typeClasses
-        )}
-      >
-        {getAgentIcon(step.agent_type)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-[11px] font-semibold text-zinc-200 truncate">
-          {getAgentName(step.agent_type)}
-          {step.execution_type === 'manual' && (
-            <span className="ml-1 text-[9px] text-amber-400">(manual)</span>
-          )}
-        </div>
-        <div className={cn('text-[9px] mt-0.5', statusTextClasses[step.status])}>
-          {statusLabels[step.status]}
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function ExpandedTicketNodeComponent({ data }: NodeProps<ExpandedTicketNodeData>) {
-  const { ticket, status, allTickets, onStepClick, onCrossSliceClick } = data
-  const steps = ticket.pipeline?.steps || []
+  const { ticket, status, allTickets, onCrossSliceClick } = data
   const blockedBy = ticket.blocked_by || []
 
   const crossSliceDeps = allTickets
@@ -156,19 +85,13 @@ function ExpandedTicketNodeComponent({ data }: NodeProps<ExpandedTicketNodeData>
         )}
       </div>
 
-      {/* Steps body */}
+      {/* Description / body area */}
       <div className="p-3 bg-zinc-950/50">
-        {steps.length > 0 ? (
-          steps.map((step, i) => (
-            <StepRow
-              key={i}
-              step={step}
-              onClick={() => onStepClick?.(ticket, step)}
-            />
-          ))
+        {ticket.description ? (
+          <p className="text-[10px] text-zinc-400 line-clamp-4">{ticket.description}</p>
         ) : (
           <div className="text-[10px] text-zinc-500 text-center py-4">
-            No pipeline configured
+            No description
           </div>
         )}
       </div>

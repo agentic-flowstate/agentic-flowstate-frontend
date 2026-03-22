@@ -66,7 +66,11 @@ export type SignalingMessage =
   | { type: 'ice_candidate'; room_id: string; from_user: string; to_user: string; candidate: string }
   | { type: 'user_joined'; room_id: string; user_id: string }
   | { type: 'user_left'; room_id: string; user_id: string }
-  | { type: 'room_users'; room_id: string; users: string[] }
+  | { type: 'screen_share_started'; room_id: string; user_id: string }
+  | { type: 'screen_share_stopped'; room_id: string; user_id: string }
+  | { type: 'transcription_started'; room_id: string; user_id: string }
+  | { type: 'transcription_stopped'; room_id: string; user_id: string }
+  | { type: 'room_users'; room_id: string; users: string[]; screen_sharers: string[]; transcribers: string[] }
   | { type: 'error'; message: string }
 
 // ============================================================================
@@ -99,6 +103,14 @@ export async function getMeeting(roomId: string): Promise<Meeting> {
   const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomId)}`, { credentials: 'include' })
   if (!response.ok) throw new Error(`Failed to get meeting: ${response.statusText}`)
   return response.json()
+}
+
+export async function joinMeetingAsParticipant(roomId: string): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}/api/meetings/${encodeURIComponent(roomId)}/join`, {
+    method: 'POST',
+    credentials: 'include',
+  })
+  if (!response.ok) throw new Error(`Failed to join meeting: ${response.statusText}`)
 }
 
 export async function startMeeting(roomId: string): Promise<void> {
@@ -241,6 +253,36 @@ export async function finalizeMeetingTranscript(roomId: string): Promise<Transcr
 }
 
 // ============================================================================
+// SSE: Real-time meeting updates
+// ============================================================================
+
+/**
+ * Subscribe to real-time meeting list updates via SSE.
+ * Returns a cleanup function to close the connection.
+ */
+export function subscribeMeetings(onUpdate: (meetings: Meeting[]) => void): () => void {
+  const url = `${getApiBaseUrl()}/api/meetings/subscribe`
+  const eventSource = new EventSource(url, { withCredentials: true })
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      if (data.meetings) {
+        onUpdate(data.meetings)
+      }
+    } catch (e) {
+      console.error('Failed to parse meeting SSE event:', e)
+    }
+  }
+
+  eventSource.onerror = () => {
+    // EventSource auto-reconnects on error, nothing to do
+  }
+
+  return () => eventSource.close()
+}
+
+// ============================================================================
 // WebSocket Signaling
 // ============================================================================
 
@@ -317,6 +359,22 @@ export class SignalingClient {
 
   sendIceCandidate(roomId: string, fromUser: string, toUser: string, candidate: string): void {
     this.send({ type: 'ice_candidate', room_id: roomId, from_user: fromUser, to_user: toUser, candidate })
+  }
+
+  sendScreenShareStarted(roomId: string, userId: string): void {
+    this.send({ type: 'screen_share_started', room_id: roomId, user_id: userId })
+  }
+
+  sendScreenShareStopped(roomId: string, userId: string): void {
+    this.send({ type: 'screen_share_stopped', room_id: roomId, user_id: userId })
+  }
+
+  sendTranscriptionStarted(roomId: string, userId: string): void {
+    this.send({ type: 'transcription_started', room_id: roomId, user_id: userId })
+  }
+
+  sendTranscriptionStopped(roomId: string, userId: string): void {
+    this.send({ type: 'transcription_stopped', room_id: roomId, user_id: userId })
   }
 }
 

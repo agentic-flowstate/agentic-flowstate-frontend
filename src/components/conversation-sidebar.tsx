@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState } from 'react'
-import { Bot, Plus, Trash2, Loader2, Copy, Check, PanelLeftClose } from 'lucide-react'
+import { Bot, Plus, Trash2, Loader2, Copy, Check, PanelLeftClose, ChevronLeft, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { StoredConversation } from '@/lib/types/conversations'
@@ -32,6 +32,18 @@ export function ConversationSidebar({
   icon,
 }: ConversationSidebarProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('conversation-sidebar-collapsed') === 'true'
+  })
+
+  const toggleDesktopCollapsed = () => {
+    setIsDesktopCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('conversation-sidebar-collapsed', String(next))
+      return next
+    })
+  }
 
   const copyConversationId = (convId: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -61,23 +73,40 @@ export function ConversationSidebar({
       {/* Sidebar */}
       <div className={cn(
         "border-r flex flex-col bg-background overflow-hidden transition-all duration-200 z-50",
-        // Mobile: fixed overlay that slides in/out. Desktop: always visible
-        "fixed inset-y-0 left-0 w-72 md:relative md:w-64",
+        "fixed inset-y-0 left-0 w-72 md:relative",
+        isDesktopCollapsed ? "md:w-12" : "md:w-64",
         isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         <div className="h-14 border-b flex items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            {icon || <Bot className="h-4 w-4 text-primary" />}
-            <span className="font-semibold text-sm">{title}</span>
-          </div>
-          <div className="flex items-center gap-1">
+          {!isDesktopCollapsed && (
+            <div className="flex items-center gap-2">
+              {icon || <Bot className="h-4 w-4 text-primary" />}
+              <span className="font-semibold text-sm">{title}</span>
+            </div>
+          )}
+          <div className={cn("flex items-center gap-1", isDesktopCollapsed && "w-full justify-center")}>
+            {!isDesktopCollapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onNewConversation}
+                title="New conversation"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
-              onClick={onNewConversation}
-              title="New conversation"
+              onClick={toggleDesktopCollapsed}
+              title={isDesktopCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              className="hidden md:flex h-6 w-6"
             >
-              <Plus className="h-4 w-4" />
+              {isDesktopCollapsed ? (
+                <Menu className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronLeft className="h-3.5 w-3.5" />
+              )}
             </Button>
             <Button
               variant="ghost"
@@ -92,7 +121,7 @@ export function ConversationSidebar({
         </div>
 
         {/* Conversation list */}
-        <div className="flex-1 overflow-y-auto p-2">
+        {!isDesktopCollapsed && <div className="flex-1 overflow-y-auto p-2">
           {isLoading ? (
             <div className="text-center text-xs text-muted-foreground py-8 flex items-center justify-center gap-2">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -147,7 +176,7 @@ export function ConversationSidebar({
               </div>
             ))
           )}
-        </div>
+        </div>}
       </div>
     </>
   )

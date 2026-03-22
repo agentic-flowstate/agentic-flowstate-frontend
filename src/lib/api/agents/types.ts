@@ -29,10 +29,10 @@ export function getCurrentOrg(): OrganizationId | null {
   return stored as OrganizationId | null
 }
 
-export type AgentType = 'vendor-research' | 'technical-research' | 'competitive-research' | 'planning' | 'execution' | 'evaluation' | 'email' | 'ticket-assistant' | 'pipeline-editor' | 'doc-manager'
+export type AgentType = 'exa-research' | 'codebase-research' | 'planning' | 'execution' | 'evaluation' | 'doc-drafter' | 'doc-manager' | 'email' | 'ticket-assistant'
 
 /** All valid current agent types */
-export const CURRENT_AGENT_TYPES: AgentType[] = ['vendor-research', 'technical-research', 'competitive-research', 'planning', 'execution', 'evaluation', 'email', 'ticket-assistant', 'pipeline-editor', 'doc-manager']
+export const CURRENT_AGENT_TYPES: AgentType[] = ['exa-research', 'codebase-research', 'planning', 'execution', 'evaluation', 'doc-drafter', 'doc-manager', 'email', 'ticket-assistant']
 
 /** Check if a string is a valid current AgentType */
 export function isValidAgentType(type: string): type is AgentType {
@@ -71,7 +71,6 @@ export interface RunAgentRequest {
   previous_session_id?: string
   selected_session_ids?: string[]  // For email agent: inject context from these sessions
   custom_input_message?: string  // For ticket-assistant: user's question
-  step_id?: string  // Explicit pipeline step ID for pipeline-aware streaming
 }
 
 export interface RunAgentResponse {
@@ -136,26 +135,24 @@ export function getAgentTypeInfo(type: AgentType): {
   color: string
 } {
   switch (type) {
-    case 'vendor-research':
-      return { label: 'Vendor Research', description: 'Research data providers and services', color: 'text-blue-500' }
-    case 'technical-research':
-      return { label: 'Technical Research', description: 'Research implementation approaches', color: 'text-purple-500' }
-    case 'competitive-research':
-      return { label: 'Competitive Research', description: 'Analyze competitors and alternatives', color: 'text-yellow-500' }
+    case 'exa-research':
+      return { label: 'Exa Research', description: 'Web research via Exa search', color: 'text-blue-500' }
+    case 'codebase-research':
+      return { label: 'Codebase Research', description: 'Analyze codebase and architecture', color: 'text-purple-500' }
     case 'planning':
       return { label: 'Planning', description: 'Create implementation plan', color: 'text-orange-500' }
     case 'execution':
       return { label: 'Execution', description: 'Implement the changes', color: 'text-green-500' }
     case 'evaluation':
       return { label: 'Evaluation', description: 'Review and validate', color: 'text-red-500' }
+    case 'doc-drafter':
+      return { label: 'Doc Drafter', description: 'Draft documentation', color: 'text-indigo-500' }
+    case 'doc-manager':
+      return { label: 'Doc Manager', description: 'Manage documentation references', color: 'text-teal-500' }
     case 'email':
       return { label: 'Email', description: 'Generate email draft', color: 'text-cyan-500' }
     case 'ticket-assistant':
       return { label: 'Ticket Assistant', description: 'Answer questions and provide guidance', color: 'text-emerald-500' }
-    case 'pipeline-editor':
-      return { label: 'Pipeline Editor', description: 'Edit pipeline steps', color: 'text-indigo-500' }
-    case 'doc-manager':
-      return { label: 'Doc Manager', description: 'Manage documentation references', color: 'text-teal-500' }
   }
 }
 

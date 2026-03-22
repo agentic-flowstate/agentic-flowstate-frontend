@@ -6,12 +6,11 @@ import { Menu, GitBranch, Network, Search, X, Map } from 'lucide-react'
 import { Sidebar } from '@/components/sidebar'
 import { TicketDetail } from '@/components/ticket-detail'
 import { AssigneeFilter } from '@/components/assignee-filter'
-import { SliceGraphWithApproval, OrgGraph, RoadmapGraph } from '@/components/slice-graph'
+import { SliceGraph, OrgGraph, RoadmapGraph } from '@/components/slice-graph'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { getEpics, getSlices, getTickets, getTicketById, getAllOrgTickets } from '@/lib/api/tickets'
-import { getTicketPipelines } from '@/lib/api/pipelines'
-import { Epic, Slice, Ticket, GraphTicket, TicketPipeline } from '@/lib/types'
+import { Epic, Slice, Ticket, GraphTicket } from '@/lib/types'
 import { useOrganization } from '@/contexts/organization-context'
 import { useAgentState } from '@/contexts/agent-state-context'
 import { useLiveData } from '@/hooks/useLiveData'
@@ -48,7 +47,7 @@ function WorkspaceLoading() {
 
 function WorkspaceContent() {
   const { selectedOrg } = useOrganization()
-  const { refreshRunningAgents, runningAgents, clearIfPipelineCompleted } = useAgentState()
+  const { refreshRunningAgents, runningAgents } = useAgentState()
   const router = useRouter()
   const searchParams = useSearchParams()
   const isInitialized = useRef(false)
@@ -77,10 +76,6 @@ function WorkspaceContent() {
   const [activeAgentRun, setActiveAgentRun] = useState<string | null>(
     searchParams.get('run')
   )
-
-  // Pipeline data fetched async, stored separately to avoid stale-closure races
-  const [fetchedPipelines, setFetchedPipelines] = useState<Record<string, TicketPipeline>>({})
-  const pipelineRunRef = useRef(0)
 
   // View mode: 'org' (default) or 'slice' (selected epics/slices)
   // Persist in URL to survive page reload
@@ -112,6 +107,14 @@ function WorkspaceContent() {
   const [searchError, setSearchError] = useState<string | null>(null)
   const [centerOnTicketId, setCenterOnTicketId] = useState<string | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-clear centerOnTicketId after the graph component has consumed it.
+  // Prevents extra re-render cycle on pane click that would swallow the first click.
+  useEffect(() => {
+    if (centerOnTicketId) {
+      setCenterOnTicketId(null)
+    }
+  }, [centerOnTicketId])
 
   // Live data updates via SSE
   const handleLiveEpicsUpdate = useCallback((newEpics: Epic[]) => {
@@ -175,7 +178,7 @@ function WorkspaceContent() {
       return updated
     })
 
-    // Also update orgTickets - merge SSE data including pipeline changes
+    // Also update orgTickets - merge SSE data
     const ticketLookup: Record<string, Ticket> = {}
     for (const t of newTickets) ticketLookup[t.ticket_id] = t
     setOrgTickets(prev => {
@@ -202,18 +205,6 @@ function WorkspaceContent() {
       return prev
     })
 
-    // Sync fetchedPipelines from SSE data so graphTickets updates immediately
-    setFetchedPipelines(prev => {
-      let changed = false
-      const updated = { ...prev }
-      for (const ticket of newTickets) {
-        if (ticket.pipeline && ticket.pipeline !== prev[ticket.ticket_id]) {
-          updated[ticket.ticket_id] = ticket.pipeline
-          changed = true
-        }
-      }
-      return changed ? updated : prev
-    })
   }, [])
 
   useLiveData({
@@ -347,8 +338,8 @@ function WorkspaceContent() {
 
   // Clear ticket selection when its slice is deselected (only in slice view)
   useEffect(() => {
-    // Don't clear in org view - tickets can be from any slice
-    if (viewMode === 'org') return
+    // Don't clear in org/roadmap view - tickets can be from any slice
+    if (viewMode === 'org' || viewMode === 'roadmap') return
 
     if (selectedTicket && !selectedSliceIds.has(selectedTicket.slice_id)) {
       setSelectedTicket(null)
@@ -442,42 +433,13 @@ function WorkspaceContent() {
     }
   }, [selectedSliceIds, slicesByEpic])
 
-  // Derive all tickets synchronously from ticketsBySlice.
-  // This replaces the old effect-based approach which had a stale-closure race:
-  // async loadPipelines could overwrite graphTickets with stale allTickets.
+  // Derive all tickets synchronously from ticketsBySlice
   const allTickets = useMemo(() => {
     return Object.values(ticketsBySlice).flat()
   }, [ticketsBySlice])
 
-  // Fetch pipelines when tickets change (with cancellation via run counter)
-  useEffect(() => {
-    const runId = ++pipelineRunRef.current
-    if (allTickets.length === 0) {
-      setFetchedPipelines({})
-      return
-    }
-    async function loadPipelines() {
-      try {
-        const ticketIds = allTickets.filter(t => t.pipeline).map(t => t.ticket_id)
-        if (ticketIds.length === 0) { setFetchedPipelines({}); return }
-        const pipelines = await getTicketPipelines(ticketIds)
-        if (pipelineRunRef.current !== runId) return // stale run, discard
-        setFetchedPipelines(pipelines)
-      } catch (error) {
-        console.error('Failed to load pipelines:', error)
-      }
-    }
-    loadPipelines()
-  }, [allTickets])
-
-  // Derive graphTickets synchronously: tickets + fetched pipeline data.
-  // This is always up-to-date — no async step can make it stale.
-  const graphTickets: GraphTicket[] = useMemo(() => {
-    return allTickets.map(ticket => ({
-      ...ticket,
-      pipeline: fetchedPipelines[ticket.ticket_id] || ticket.pipeline || undefined,
-    }))
-  }, [allTickets, fetchedPipelines])
+  // graphTickets is simply allTickets
+  const graphTickets: GraphTicket[] = allTickets
 
   // Track which tickets we've already checked for running agents
   const checkedTicketsRef = useRef<Set<string>>(new Set())
@@ -488,13 +450,10 @@ function WorkspaceContent() {
     const allTickets = Object.values(ticketsBySlice).flat()
     if (allTickets.length === 0) return
 
-    // Only check tickets that could plausibly have a running agent:
-    // - status is in_progress, OR
-    // - has a pipeline with a 'running' step
+    // Only check tickets that could plausibly have a running agent
     const ticketsToCheck = allTickets.filter(t => {
       if (checkedTicketsRef.current.has(t.ticket_id)) return false
       if (t.status === 'in_progress') return true
-      if (t.pipeline?.steps?.some(s => s.status === 'running')) return true
       return false
     })
     if (ticketsToCheck.length === 0) return
@@ -523,14 +482,7 @@ function WorkspaceContent() {
       setIsLoadingOrgTickets(true)
       try {
         const tickets = await getAllOrgTickets()
-        // Only fetch pipelines for tickets that have one
-        const ticketIds = tickets.filter(t => t.pipeline).map(t => t.ticket_id)
-        const pipelines = ticketIds.length > 0 ? await getTicketPipelines(ticketIds) : {}
-        const ticketsWithPipelines: GraphTicket[] = tickets.map(ticket => ({
-          ...ticket,
-          pipeline: pipelines[ticket.ticket_id] || undefined,
-        }))
-        setOrgTickets(ticketsWithPipelines)
+        setOrgTickets(tickets as GraphTicket[])
       } catch (error) {
         console.error('Failed to load org tickets:', error)
         setOrgTickets([])
@@ -541,29 +493,6 @@ function WorkspaceContent() {
 
     loadOrgTickets()
   }, [viewMode, selectedOrg])
-
-  // Clear stale running state when org tickets with pipelines are loaded
-  // This syncs the glowing border with actual pipeline status
-  useEffect(() => {
-    if (orgTickets.length === 0) return
-
-    orgTickets.forEach(ticket => {
-      if (ticket.pipeline?.steps) {
-        clearIfPipelineCompleted(ticket.ticket_id, ticket.pipeline.steps)
-      }
-    })
-  }, [orgTickets, clearIfPipelineCompleted])
-
-  // Also clear stale state when slice graph tickets are loaded
-  useEffect(() => {
-    if (graphTickets.length === 0) return
-
-    graphTickets.forEach(ticket => {
-      if (ticket.pipeline?.steps) {
-        clearIfPipelineCompleted(ticket.ticket_id, ticket.pipeline.steps)
-      }
-    })
-  }, [graphTickets, clearIfPipelineCompleted])
 
   // Restore ticket from URL or ensure selected ticket has full data
   useEffect(() => {
@@ -576,12 +505,12 @@ function WorkspaceContent() {
         return
       }
 
-      // If we already have this ticket selected with pipeline, don't overwrite
-      if (selectedTicket?.ticket_id === focusedTicket && selectedTicket?.pipeline) {
+      // If we already have this ticket selected, don't overwrite
+      if (selectedTicket?.ticket_id === focusedTicket) {
         return
       }
 
-      // Check graphTickets first (has pipeline data)
+      // Check graphTickets first
       const graphTicket = graphTickets.find(t => t.ticket_id === focusedTicket)
       if (graphTicket) {
         setSelectedTicket(graphTicket)
@@ -695,8 +624,8 @@ function WorkspaceContent() {
       return
     }
 
-    // Ensure we're in org view
-    if (viewMode !== 'org') {
+    // Switch to org view only if in slice view (roadmap also shows all org tickets)
+    if (viewMode === 'slice') {
       setViewMode('org')
     }
 
@@ -710,16 +639,6 @@ function WorkspaceContent() {
     setIsSearchOpen(false)
     setSearchValue('')
   }, [searchValue, orgTickets, viewMode])
-
-  // Refresh pipelines after approval
-  const handlePipelineRefresh = useCallback(() => {
-    const ticketIds = allTickets.filter(t => t.pipeline).map(t => t.ticket_id)
-    if (ticketIds.length > 0) {
-      getTicketPipelines(ticketIds).then(pipelines => {
-        setFetchedPipelines(pipelines)
-      })
-    }
-  }, [allTickets])
 
   // Handle graph ticket click - open ticket detail
   const handleGraphTicketClick = useCallback((ticket: GraphTicket) => {
@@ -739,7 +658,7 @@ function WorkspaceContent() {
     // Update in orgTickets array
     setOrgTickets(prev => prev.map(t =>
       t.ticket_id === updatedTicket.ticket_id
-        ? { ...t, ...updatedTicket, pipeline: updatedTicket.pipeline }
+        ? { ...t, ...updatedTicket }
         : t
     ))
 
@@ -755,13 +674,6 @@ function WorkspaceContent() {
       }
     })
 
-    // Update fetched pipeline data if present
-    if (updatedTicket.pipeline) {
-      setFetchedPipelines(prev => ({
-        ...prev,
-        [updatedTicket.ticket_id]: updatedTicket.pipeline!,
-      }))
-    }
   }, [])
 
   // Flatten all slices for sidebar
@@ -1034,7 +946,7 @@ function WorkspaceContent() {
                           </div>
                         ) : selectedSlices.length === 1 ? (
                           /* Single slice - full graph */
-                          <SliceGraphWithApproval
+                          <SliceGraph
                             slice={selectedSlices[0]}
                             tickets={graphTickets}
                             allTickets={graphTickets}
@@ -1043,7 +955,6 @@ function WorkspaceContent() {
                             onTicketClick={handleGraphTicketClick}
                             onPaneClick={handleCloseDrawer}
                             onCrossSliceClick={handleCrossSliceClick}
-                            onRefresh={handlePipelineRefresh}
                           />
                         ) : (
                           /* Multiple slices - grid of graphs */
@@ -1056,7 +967,7 @@ function WorkspaceContent() {
                                   <span className="text-xs font-medium text-zinc-300 truncate">{slice.title}</span>
                                 </div>
                                 <div className="h-[calc(100%-32px)]">
-                                  <SliceGraphWithApproval
+                                  <SliceGraph
                                     slice={slice}
                                     tickets={sliceTickets}
                                     allTickets={graphTickets}
@@ -1065,7 +976,6 @@ function WorkspaceContent() {
                                     onTicketClick={handleGraphTicketClick}
                                     onPaneClick={handleCloseDrawer}
                                     onCrossSliceClick={handleCrossSliceClick}
-                                    onRefresh={handlePipelineRefresh}
                                   />
                                 </div>
                               </div>

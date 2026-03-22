@@ -33,6 +33,7 @@ export interface UpdateDraftRequest {
 export async function createDraft(req: CreateDraftRequest): Promise<EmailDraft> {
   const response = await fetch(`${AGENT_API_BASE}/api/drafts`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
   })
@@ -50,7 +51,7 @@ export async function createDraft(req: CreateDraftRequest): Promise<EmailDraft> 
  */
 export async function listDrafts(includeAll = false): Promise<DraftListResponse> {
   const params = includeAll ? '?include_all=true' : ''
-  const response = await fetch(`${AGENT_API_BASE}/api/drafts${params}`)
+  const response = await fetch(`${AGENT_API_BASE}/api/drafts${params}`, { credentials: 'include' })
 
   if (!response.ok) {
     throw new Error('Failed to list drafts')
@@ -63,7 +64,7 @@ export async function listDrafts(includeAll = false): Promise<DraftListResponse>
  * Get a specific draft
  */
 export async function getDraft(id: number): Promise<EmailDraft> {
-  const response = await fetch(`${AGENT_API_BASE}/api/drafts/${id}`)
+  const response = await fetch(`${AGENT_API_BASE}/api/drafts/${id}`, { credentials: 'include' })
 
   if (!response.ok) {
     throw new Error('Failed to get draft')
@@ -78,6 +79,7 @@ export async function getDraft(id: number): Promise<EmailDraft> {
 export async function updateDraft(id: number, req: UpdateDraftRequest): Promise<EmailDraft> {
   const response = await fetch(`${AGENT_API_BASE}/api/drafts/${id}`, {
     method: 'PATCH',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(req),
   })
@@ -95,6 +97,7 @@ export async function updateDraft(id: number, req: UpdateDraftRequest): Promise<
 export async function deleteDraft(id: number): Promise<void> {
   const response = await fetch(`${AGENT_API_BASE}/api/drafts/${id}`, {
     method: 'DELETE',
+    credentials: 'include',
   })
 
   if (!response.ok) {
@@ -108,6 +111,7 @@ export async function deleteDraft(id: number): Promise<void> {
 export async function sendDraft(id: number): Promise<{ message_id: string; success: boolean }> {
   const response = await fetch(`${AGENT_API_BASE}/api/drafts/${id}/send`, {
     method: 'POST',
+    credentials: 'include',
   })
 
   if (!response.ok) {

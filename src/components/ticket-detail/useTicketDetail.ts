@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Ticket } from '@/lib/types'
 import { updateTicketNotes, getTicketById } from '@/lib/api/tickets'
-import { runPipeline, retryPipelineStep } from '@/lib/api/pipelines'
 import {
   getAgentRuns,
   isValidAgentType,
@@ -46,7 +45,6 @@ export interface UseTicketDetailReturn {
   runningAgentInfo: RunningAgentInfo | undefined
   completedAgentTypes: Set<string>
   archivedRuns: AgentRun[]
-  agentTypes: AgentType[]
 
   // Modal state
   isModalOpen: boolean
@@ -55,19 +53,15 @@ export interface UseTicketDetailReturn {
   modalPreviousSessionId: string | undefined
   shouldAutoStart: boolean
   reconnectSessionId: string | undefined
-  modalStepId: string | undefined
 
   // Ticket Assistant state
   handleOpenAssistant: () => void
 
-  // Pipeline & Doc management
-  handleEditPipeline: () => void
+  // Doc management
   handleManageDocs: () => void
 
   // Handlers
   handleRunAgent: (agentType: AgentType) => void
-  handleRunPipeline: () => Promise<void>
-  handleRetryStep: (stepId: string) => Promise<void>
   handleModalClose: () => void
   handleAgentStart: () => void
   handleModalComplete: () => void
@@ -78,16 +72,14 @@ export interface UseTicketDetailReturn {
 
 const CURRENT_AGENT_TYPES: string[] = [
   'exa-research',
-  'research-synthesis',
-  'ticket-planner',
-  'ticket-creator',
+  'codebase-research',
   'planning',
   'execution',
   'evaluation',
+  'doc-drafter',
+  'doc-manager',
   'email',
   'ticket-assistant',
-  'pipeline-editor',
-  'doc-manager'
 ]
 
 export function useTicketDetail({
@@ -109,7 +101,6 @@ export function useTicketDetail({
     markAgentStarted,
     markAgentCompleted,
     checkForActiveAgent,
-    clearIfPipelineCompleted,
   } = useAgentState()
 
   // Local agent state
@@ -123,15 +114,6 @@ export function useTicketDetail({
   const [modalPreviousSessionId, setModalPreviousSessionId] = useState<string | undefined>(undefined)
   const [shouldAutoStart, setShouldAutoStart] = useState(false)
   const [reconnectSessionId, setReconnectSessionId] = useState<string | undefined>(undefined)
-  const [modalStepId, setModalStepId] = useState<string | undefined>(undefined)
-
-  // Clear stale running state if pipeline shows agent is done
-  // This must happen before deriving isAgentRunning to avoid flicker
-  useEffect(() => {
-    if (ticket?.pipeline?.steps) {
-      clearIfPipelineCompleted(ticket.ticket_id, ticket.pipeline.steps)
-    }
-  }, [ticket?.ticket_id, ticket?.pipeline?.steps, clearIfPipelineCompleted])
 
   // Derive running state from global context
   const isAgentRunning = ticket ? isGlobalAgentRunning(ticket.ticket_id) : false
@@ -237,39 +219,16 @@ export function useTicketDetail({
     }
   }, [ticket?.epic_id, ticket?.slice_id, ticket?.ticket_id])
 
-  // Refresh ticket to get latest pipeline state
-  const refreshTicket = useCallback(async () => {
-    if (!ticket) return
-    try {
-      const updatedTicket = await getTicketById(ticket.ticket_id)
-      if (updatedTicket) {
-        onTicketUpdate?.(updatedTicket)
-      }
-    } catch (error) {
-      console.error('Failed to refresh ticket:', error)
-    }
-  }, [ticket?.ticket_id, onTicketUpdate])
-
-  // Detect if pipeline has active (running) steps
-  const isPipelineActive = useMemo(() => {
-    return ticket?.pipeline?.steps?.some(s => s.status === 'running') ?? false
-  }, [ticket?.pipeline?.steps])
-
-  // Poll for updates while open — faster when pipeline is actively running
+  // Poll for updates while open
   useEffect(() => {
     if (!isOpen || !ticket) return
 
-    const pollMs = isPipelineActive ? 3000 : 10000
-
     const interval = setInterval(() => {
       reloadAgentRuns()
-      if (isPipelineActive) {
-        refreshTicket()
-      }
-    }, pollMs)
+    }, 10000)
 
     return () => clearInterval(interval)
-  }, [isOpen, ticket?.ticket_id, isPipelineActive, reloadAgentRuns, refreshTicket])
+  }, [isOpen, ticket?.ticket_id, reloadAgentRuns])
 
   // Sync modal agent type from global state
   useEffect(() => {
@@ -280,21 +239,6 @@ export function useTicketDetail({
       setReconnectSessionId(runningAgentInfo.sessionId)
     }
   }, [runningAgentInfo])
-
-  // Determine agent types from pipeline, or fall back to defaults
-  const agentTypes: AgentType[] = useMemo(() => {
-    // If ticket has a pipeline, use its steps
-    if (ticket?.pipeline?.steps && ticket.pipeline.steps.length > 0) {
-      const pipelineAgents = ticket.pipeline.steps
-        .map(step => step.agent_type)
-        .filter((agent): agent is AgentType => isValidAgentType(agent))
-      if (pipelineAgents.length > 0) {
-        return pipelineAgents
-      }
-    }
-    // Fall back to defaults
-    return ['planning', 'execution', 'evaluation']
-  }, [ticket?.pipeline?.steps])
 
   // Handlers
   const handleSaveNotes = useCallback(async () => {
@@ -315,17 +259,10 @@ export function useTicketDetail({
     if (!ticket) return
     if (isCheckingActiveAgent) return
 
-    // Check if pipeline step is already running or completed
-    const pipelineStep = ticket.pipeline?.steps?.find(s => s.agent_type === agentType)
-    const stepStatus = pipelineStep?.status
-
-    // If this specific step is running (or any agent is running for this ticket),
-    // open modal to view its output — don't start a new run
-    if (stepStatus === 'running' || isAgentRunning) {
+    // If an agent is running for this ticket, open modal to view its output
+    if (isAgentRunning) {
       setModalAgentType(agentType)
-      setModalStepId(pipelineStep?.step_id)
-      // Use the agent_run_id from the pipeline step, falling back to global running state
-      const sessionToReconnect = pipelineStep?.agent_run_id ?? runningAgentInfo?.sessionId
+      const sessionToReconnect = runningAgentInfo?.sessionId
       if (sessionToReconnect) {
         setReconnectSessionId(sessionToReconnect)
       }
@@ -334,33 +271,13 @@ export function useTicketDetail({
       return
     }
 
-    // If pipeline step is completed, show results (never auto-start)
-    if (stepStatus === 'completed') {
-      const completedRun = agentRuns.find(
-        run => run.agent_type === agentType && run.status === 'completed'
-      )
-      // Even if no completed agent_run found (e.g. after reset), use the
-      // pipeline step's agent_run_id as fallback — never fall through to auto-start
-      const sessionId = completedRun?.session_id ?? pipelineStep?.agent_run_id
-      if (sessionId) {
-        setModalAgentType(agentType)
-        setModalStepId(pipelineStep?.step_id)
-        setReconnectSessionId(sessionId)
-        setShouldAutoStart(false)
-        setIsModalOpen(true)
-        onAgentRunChange?.(sessionId)
-      }
-      return
-    }
-
-    // Legacy check for completed agent types (for tickets without pipelines)
+    // Check for completed run to show results
     if (completedAgentTypes.has(agentType)) {
       const completedRun = agentRuns.find(
         run => run.agent_type === agentType && run.status === 'completed'
       )
       if (completedRun) {
         setModalAgentType(agentType)
-        setModalStepId(undefined)
         setReconnectSessionId(completedRun.session_id)
         setShouldAutoStart(false)
         setIsModalOpen(true)
@@ -373,81 +290,13 @@ export function useTicketDetail({
       (run) => run.status === 'completed' && run.output_summary
     )
 
-    // Resolve step_id from pipeline for new runs
-    const resolvedStepId = pipelineStep?.step_id
-
     setModalAgentType(agentType)
     setModalPreviousSessionId(previousRun?.session_id)
     setReconnectSessionId(undefined)
-    setModalStepId(resolvedStepId)
     // Email agent: don't auto-start, let user select context first
     setShouldAutoStart(agentType !== 'email')
     setIsModalOpen(true)
   }, [ticket, isCheckingActiveAgent, isAgentRunning, runningAgentInfo, completedAgentTypes, agentRuns, onAgentRunChange])
-
-  const handleRunPipeline = useCallback(async () => {
-    if (!ticket) return
-
-    try {
-      const result = await runPipeline(ticket.ticket_id)
-      if (result.started) {
-        // Mark agent as started in global state so UI shows it's running
-        const firstStep = ticket.pipeline?.steps?.find(s => s.status === 'queued')
-        if (firstStep && result.session_id) {
-          markAgentStarted({
-            sessionId: result.session_id,
-            ticketId: ticket.ticket_id,
-            epicId: ticket.epic_id,
-            sliceId: ticket.slice_id,
-            agentType: firstStep.agent_type,
-            startedAt: new Date().toISOString(),
-          })
-        }
-
-        // Refresh ticket to get updated pipeline state
-        const updatedTicket = await getTicketById(ticket.ticket_id)
-        if (updatedTicket) {
-          onTicketUpdate?.(updatedTicket)
-        }
-      }
-    } catch (error) {
-      console.error('Failed to start pipeline:', error)
-    }
-  }, [ticket, onTicketUpdate, markAgentStarted])
-
-  const handleRetryStep = useCallback(async (stepId: string) => {
-    if (!ticket) return
-
-    try {
-      const result = await retryPipelineStep(ticket.ticket_id, stepId)
-
-      // If a new agent was auto-started, track it
-      if (result.session_id) {
-        const step = ticket.pipeline?.steps?.find(s => s.step_id === stepId)
-        if (step) {
-          markAgentStarted({
-            sessionId: result.session_id,
-            ticketId: ticket.ticket_id,
-            epicId: ticket.epic_id,
-            sliceId: ticket.slice_id,
-            agentType: step.agent_type,
-            startedAt: new Date().toISOString(),
-          })
-        }
-      }
-
-      // Refresh ticket to get updated pipeline state
-      const updatedTicket = await getTicketById(ticket.ticket_id)
-      if (updatedTicket) {
-        onTicketUpdate?.(updatedTicket)
-      }
-
-      // Reload agent runs (old ones were cleaned up by the backend)
-      await reloadAgentRuns()
-    } catch (error) {
-      console.error('Failed to retry pipeline step:', error)
-    }
-  }, [ticket, onTicketUpdate, markAgentStarted, reloadAgentRuns])
 
   const handleModalClose = useCallback(() => {
     setIsModalOpen(false)
@@ -466,23 +315,13 @@ export function useTicketDetail({
       startedAt: new Date().toISOString(),
     })
     setShouldAutoStart(false)
-
-    // Refresh ticket to pick up the updated pipeline step status (e.g. failed -> running)
-    try {
-      const updatedTicket = await getTicketById(ticket.ticket_id)
-      if (updatedTicket) {
-        onTicketUpdate?.(updatedTicket)
-      }
-    } catch {
-      // Non-critical, polling will catch up
-    }
-  }, [ticket, modalAgentType, reconnectSessionId, markAgentStarted, onTicketUpdate])
+  }, [ticket, modalAgentType, reconnectSessionId, markAgentStarted])
 
   const handleModalComplete = useCallback(async () => {
     if (ticket) {
       markAgentCompleted(ticket.ticket_id)
 
-      // Fetch updated ticket to get latest pipeline state and guidance
+      // Fetch updated ticket to get latest state
       try {
         const updatedTicket = await getTicketById(ticket.ticket_id)
         if (updatedTicket) {
@@ -529,35 +368,7 @@ export function useTicketDetail({
     setIsModalOpen(true)
   }, [ticket, isAgentRunning])
 
-  // Pipeline editor handler - opens modal with pipeline-editor agent
-  // If running, reconnect to view. Otherwise start fresh (pipeline-editor is always a new edit).
-  const handleEditPipeline = useCallback(() => {
-    if (!ticket) return
-
-    // If pipeline-editor is currently running, reconnect
-    if (isAgentRunning && runningAgentInfo?.agentType === 'pipeline-editor') {
-      setModalAgentType('pipeline-editor')
-      setReconnectSessionId(runningAgentInfo.sessionId)
-      setModalPreviousSessionId(undefined)
-      setModalStepId(undefined)
-      setShouldAutoStart(false)
-      setIsModalOpen(true)
-      return
-    }
-
-    if (isAgentRunning) return
-
-    setModalAgentType('pipeline-editor')
-    setModalPreviousSessionId(undefined)
-    setReconnectSessionId(undefined)
-    setModalStepId(undefined)
-    setShouldAutoStart(true)
-    setIsModalOpen(true)
-  }, [ticket, isAgentRunning, runningAgentInfo])
-
   // Doc manager handler - opens modal with doc-manager agent
-  // If a doc-manager is running or has completed, reconnect to view output/chat
-  // Only auto-start a fresh run if no existing doc-manager session exists
   const handleManageDocs = useCallback(() => {
     if (!ticket) return
 
@@ -566,7 +377,6 @@ export function useTicketDetail({
       setModalAgentType('doc-manager')
       setReconnectSessionId(runningAgentInfo.sessionId)
       setModalPreviousSessionId(undefined)
-      setModalStepId(undefined)
       setShouldAutoStart(false)
       setIsModalOpen(true)
       return
@@ -580,17 +390,15 @@ export function useTicketDetail({
       setModalAgentType('doc-manager')
       setReconnectSessionId(existingRun.session_id)
       setModalPreviousSessionId(undefined)
-      setModalStepId(undefined)
       setShouldAutoStart(false)
       setIsModalOpen(true)
       return
     }
 
-    // No existing run — start fresh
+    // No existing run -- start fresh
     setModalAgentType('doc-manager')
     setModalPreviousSessionId(undefined)
     setReconnectSessionId(undefined)
-    setModalStepId(undefined)
     setShouldAutoStart(true)
     setIsModalOpen(true)
   }, [ticket, isAgentRunning, runningAgentInfo, agentRuns])
@@ -612,7 +420,6 @@ export function useTicketDetail({
     runningAgentInfo,
     completedAgentTypes,
     archivedRuns,
-    agentTypes,
 
     // Modal state
     isModalOpen,
@@ -621,19 +428,15 @@ export function useTicketDetail({
     modalPreviousSessionId,
     shouldAutoStart,
     reconnectSessionId,
-    modalStepId,
 
     // Ticket Assistant state
     handleOpenAssistant,
 
-    // Pipeline & Doc management
-    handleEditPipeline,
+    // Doc management
     handleManageDocs,
 
     // Handlers
     handleRunAgent,
-    handleRunPipeline,
-    handleRetryStep,
     handleModalClose,
     handleAgentStart,
     handleModalComplete,

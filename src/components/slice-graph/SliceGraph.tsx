@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ReactFlow, {
   Background,
   useNodesState,
@@ -14,7 +14,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 
-import type { GraphTicket, PipelineStep, Slice } from '@/lib/types'
+import type { GraphTicket, Slice } from '@/lib/types'
 import { TicketNode } from './TicketNode'
 import { getLayoutedElements } from './utils'
 import { Plus, Minus, Maximize, Lock, Unlock } from 'lucide-react'
@@ -31,7 +31,6 @@ interface SliceGraphProps {
   processingTicketIds?: Set<string>
   onTicketClick?: (ticket: GraphTicket) => void
   onPaneClick?: () => void // Called when clicking on empty canvas
-  onStepClick?: (ticket: GraphTicket, step: PipelineStep) => void
   onCrossSliceClick?: (ticketId: string, sliceId: string) => void
 }
 
@@ -43,7 +42,6 @@ export function SliceGraph({
   processingTicketIds,
   onTicketClick,
   onPaneClick,
-  onStepClick,
   onCrossSliceClick,
 }: SliceGraphProps) {
   const expandedIds = new Set<string>()
@@ -65,30 +63,36 @@ export function SliceGraph({
     return () => { cancelled = true }
   }, [tickets, slice.slice_id])
 
-  // Add callbacks, allTickets reference, and selection/processing state to node data
-  const nodesWithCallbacks = useMemo(
-    () =>
-      layoutedNodes.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          allTickets,
-          onStepClick,
-          onCrossSliceClick,
-          isSelected: node.id === selectedTicketId,
-          isProcessing: processingTicketIds?.has(node.id) ?? false,
-        },
-      })),
-    [layoutedNodes, allTickets, onStepClick, onCrossSliceClick, selectedTicketId, processingTicketIds]
-  )
-
-  const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithCallbacks)
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges)
 
-  // Sync React Flow state when layout or callbacks change
+  // Full replace when layout changes (new tickets, re-layout)
   useEffect(() => {
-    setNodes(nodesWithCallbacks)
-  }, [nodesWithCallbacks, setNodes])
+    setNodes(layoutedNodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        allTickets,
+        onCrossSliceClick,
+        isSelected: node.id === selectedTicketId,
+        isProcessing: processingTicketIds?.has(node.id) ?? false,
+      },
+    })))
+  }, [layoutedNodes, setNodes])
+
+  // Update node data in-place (preserves dragged positions)
+  useEffect(() => {
+    setNodes(prev => prev.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        allTickets,
+        onCrossSliceClick,
+        isSelected: node.id === selectedTicketId,
+        isProcessing: processingTicketIds?.has(node.id) ?? false,
+      },
+    })))
+  }, [selectedTicketId, processingTicketIds, allTickets, onCrossSliceClick, setNodes])
 
   useEffect(() => {
     setEdges(layoutedEdges)

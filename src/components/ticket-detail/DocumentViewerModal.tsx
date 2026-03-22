@@ -16,16 +16,17 @@ interface DocumentViewerModalProps {
   isOpen: boolean
   onClose: () => void
   ticketId: string
-  docPath: string | null
+  artifactId: string | null
+  artifactTitle?: string
 }
 
-export function DocumentViewerModal({ isOpen, onClose, ticketId, docPath }: DocumentViewerModalProps) {
+export function DocumentViewerModal({ isOpen, onClose, ticketId, artifactId, artifactTitle }: DocumentViewerModalProps) {
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
-    if (!isOpen || !docPath) {
+    if (!isOpen || !artifactId) {
       setContent(null)
       setError(null)
       return
@@ -36,7 +37,7 @@ export function DocumentViewerModal({ isOpen, onClose, ticketId, docPath }: Docu
     setContent(null)
     setError(null)
 
-    fetch(`/api/tickets/${ticketId}/docs/content?path=${encodeURIComponent(docPath)}`, {
+    fetch(`/api/tickets/${ticketId}/docs/content?artifact_id=${encodeURIComponent(artifactId)}`, {
       credentials: 'include',
     })
       .then(async (res) => {
@@ -60,9 +61,9 @@ export function DocumentViewerModal({ isOpen, onClose, ticketId, docPath }: Docu
       })
 
     return () => { cancelled = true }
-  }, [isOpen, ticketId, docPath])
+  }, [isOpen, ticketId, artifactId])
 
-  const filename = docPath?.split('/').pop() || docPath || ''
+  const displayTitle = artifactTitle || artifactId || ''
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -70,7 +71,7 @@ export function DocumentViewerModal({ isOpen, onClose, ticketId, docPath }: Docu
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <FileText className="h-4 w-4 text-muted-foreground" />
-            {filename}
+            {displayTitle}
           </DialogTitle>
         </DialogHeader>
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -20,9 +20,14 @@ import {
   Pencil,
   Star,
   Trash2,
+  Send,
+  Bot,
 } from 'lucide-react'
-import { listMeetings, generateRoomId, endMeeting, deleteMeeting, updateMeeting, toggleMeetingFavorite, Meeting } from '@/lib/api/meetings'
+import { listMeetings, subscribeMeetings, generateRoomId, endMeeting, deleteMeeting, updateMeeting, toggleMeetingFavorite, Meeting } from '@/lib/api/meetings'
 import { getTranscriptSession } from '@/lib/api/transcripts'
+import { useAuth, isAdmin } from '@/contexts/auth-context'
+import { useConversationChat } from '@/hooks/useConversationChat'
+import { MessageRenderer } from '@/components/message-renderer'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -48,6 +53,8 @@ function MeetingsLoadingFallback() {
 function MeetingsPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { user } = useAuth()
+  const showAgentTab = isAdmin(user)
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null)
@@ -59,6 +66,18 @@ function MeetingsPageContent() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleInput, setTitleInput] = useState('')
   const [activeTab, setActiveTab] = useState<string>('notes')
+
+  // Meeting agent chat (admin-only)
+  const agentPayload = useMemo(
+    () => selectedMeeting ? { room_id: selectedMeeting.room_id } : { room_id: '' },
+    [selectedMeeting?.room_id]
+  )
+  const agentChat = useConversationChat({
+    sseOrganization: 'meetings',
+    chatApiEndpoint: '/api/meeting-agent',
+    basePath: '/meetings',
+    extraPayload: agentPayload,
+  })
 
   // Check if a meeting is still processing
   function isProcessing(meeting: Meeting): boolean {
@@ -74,8 +93,17 @@ function MeetingsPageContent() {
     }
   }
 
+  // SSE subscription for real-time meeting updates
   useEffect(() => {
+    // Initial fetch, then SSE takes over
     loadMeetings()
+
+    const cleanup = subscribeMeetings((updated) => {
+      setMeetings(updated)
+      setLoading(false)
+    })
+
+    return cleanup
   }, [])
 
   // Helper to update URL without full navigation
@@ -112,25 +140,13 @@ function MeetingsPageContent() {
       const meeting = meetings.find(m => m.room_id === meetingId)
       if (meeting && meeting.status === 'ended') {
         handleSelectMeeting(meeting, false) // Don't update URL, we're restoring from it
-        if (tabParam === 'notes' || tabParam === 'transcript') {
+        if (tabParam === 'notes' || tabParam === 'transcript' || tabParam === 'agent') {
           setActiveTab(tabParam)
         }
       }
     }
     setAutoSelectHandled(true)
   }, [meetings, loading, autoSelectHandled, searchParams, router])
-
-  // Auto-refresh if any meetings are processing
-  useEffect(() => {
-    const hasProcessing = meetings.some(isProcessing)
-    if (!hasProcessing) return
-
-    const interval = setInterval(() => {
-      loadMeetings()
-    }, 5000) // Refresh every 5 seconds
-
-    return () => clearInterval(interval)
-  }, [meetings])
 
   // Sync selectedMeeting with updated data from meetings list
   useEffect(() => {
@@ -221,6 +237,10 @@ function MeetingsPageContent() {
 
     // Allow viewing ended meetings even if still processing
     if (meeting.status === 'ended') {
+      // Reset agent chat when switching meetings
+      if (selectedMeeting?.room_id !== meeting.room_id) {
+        agentChat.startNewConversation()
+      }
       setSelectedMeeting(meeting)
       // Default to notes tab when selecting a new meeting
       setActiveTab('notes')
@@ -639,6 +659,12 @@ function MeetingsPageContent() {
                   )}
                   Transcript
                 </TabsTrigger>
+                {showAgentTab && (
+                  <TabsTrigger value="agent" className="flex-1 gap-1.5">
+                    <Bot className="h-3.5 w-3.5" />
+                    Agent
+                  </TabsTrigger>
+                )}
               </TabsList>
             </div>
 
@@ -753,6 +779,57 @@ function MeetingsPageContent() {
                 </div>
               )}
             </TabsContent>
+
+            {/* Agent Tab (admin-only) */}
+            {showAgentTab && (
+              <TabsContent value="agent" className="flex-1 flex flex-col mt-0 min-h-0 data-[state=inactive]:hidden">
+                <div
+                  ref={agentChat.scrollRef}
+                  onScroll={agentChat.handleScroll}
+                  className="flex-1 overflow-y-auto p-5 min-h-0"
+                >
+                  {agentChat.messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-center">
+                      <Bot className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                      <p className="text-muted-foreground text-sm">Ask the agent to process this meeting</p>
+                      <p className="text-muted-foreground/60 text-xs mt-1">Create tickets, send emails, update epics...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <MessageRenderer
+                        messages={agentChat.messages}
+                        onToggleToolExpanded={agentChat.toggleToolExpanded}
+                        onToggleToolsCollapsed={agentChat.toggleToolsCollapsed}
+                        isLoading={agentChat.isRunning}
+                      />
+                      <div ref={agentChat.messagesEndRef} />
+                    </>
+                  )}
+                </div>
+                <div className="p-4 border-t border-border shrink-0">
+                  <div className="flex gap-2">
+                    <textarea
+                      ref={agentChat.textareaRef}
+                      value={agentChat.inputValue}
+                      onChange={(e) => agentChat.setInputValue(e.target.value)}
+                      onKeyDown={agentChat.handleKeyDown}
+                      placeholder="Ask agent to take action..."
+                      rows={1}
+                      disabled={agentChat.isRunning}
+                      className="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+                    />
+                    <Button
+                      size="icon"
+                      onClick={() => agentChat.sendMessage()}
+                      disabled={agentChat.isRunning || !agentChat.inputValue.trim()}
+                      className="shrink-0"
+                    >
+                      {agentChat.isRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       )}

@@ -6,6 +6,7 @@ import { OrganizationProvider } from '@/contexts/organization-context'
 import { AuthProvider } from '@/contexts/auth-context'
 import { AgentStateProvider } from '@/contexts/agent-state-context'
 import { NavigationProgress } from '@/components/navigation-progress'
+import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: 'Agentic Ticketing',
@@ -46,6 +47,7 @@ export default function RootLayout({
             <OrganizationProvider>
               <AgentStateProvider>
                 {children}
+                <Toaster position="top-right" richColors closeButton />
               </AgentStateProvider>
             </OrganizationProvider>
           </AuthProvider>

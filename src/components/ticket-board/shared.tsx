@@ -20,7 +20,7 @@ export const STATUS_LANES = [
   { status: 'open', label: 'OPEN', icon: Circle, color: 'text-muted-foreground', bgColor: 'bg-muted/20' },
   { status: 'in_progress', label: 'IN PROGRESS', icon: Clock, color: 'text-blue-500', bgColor: 'bg-blue-500/10' },
   { status: 'blocked', label: 'BLOCKED', icon: AlertCircle, color: 'text-destructive', bgColor: 'bg-destructive/10' },
-  { status: 'completed', label: 'COMPLETED', icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-500/10' },
+  { status: 'done', label: 'DONE', icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-500/10' },
 ] as const
 
 export interface TicketBoardProps {

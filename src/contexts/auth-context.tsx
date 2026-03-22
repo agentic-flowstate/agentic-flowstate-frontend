@@ -19,6 +19,7 @@ export interface AuthUser {
   name: string
   email?: string
   organizations: UserOrganization[]
+  is_admin?: boolean
 }
 
 /** Check if user has access to a specific organization */
@@ -33,9 +34,14 @@ export function isOrgOwner(user: AuthUser | null, org: string): boolean {
   return user.organizations.some(o => o.organization === org && o.role === 'owner')
 }
 
-/** Check if user has access to the life page (__life org) */
-export function hasLifeAccess(user: AuthUser | null): boolean {
-  return hasOrgAccess(user, '__life')
+/** Check if user has access to the home page (__home org) */
+export function hasHomeAccess(user: AuthUser | null): boolean {
+  return hasOrgAccess(user, '__home')
+}
+
+/** Check if user is an admin */
+export function isAdmin(user: AuthUser | null): boolean {
+  return !!user?.is_admin
 }
 
 interface DevicePreferences {
@@ -76,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch(`${getApiBaseUrl()}/api/auth/me`, { credentials: 'include' })
         if (res.ok) {
           const data = await res.json()
-          setUser({ user_id: data.user_id, name: data.name, email: data.email, organizations: data.organizations || [] })
+          setUser({ user_id: data.user_id, name: data.name, email: data.email, organizations: data.organizations || [], is_admin: data.is_admin })
         }
       } catch {
         // Not authenticated or server unreachable
@@ -100,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchMe = useCallback(async (): Promise<AuthUser> => {
     const res = await fetch(`${getApiBaseUrl()}/api/auth/me`, { credentials: 'include' })
     const data = await res.json()
-    return { user_id: data.user_id, name: data.name, email: data.email, organizations: data.organizations || [] }
+    return { user_id: data.user_id, name: data.name, email: data.email, organizations: data.organizations || [], is_admin: data.is_admin }
   }, [])
 
   const login = useCallback(async (userId: string, password: string) => {

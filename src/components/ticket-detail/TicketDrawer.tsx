@@ -1,14 +1,17 @@
 "use client"
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { X, FileText } from 'lucide-react'
 import { Ticket } from '@/lib/types'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { AgentRunModal } from '@/components/agent-run-modal'
 import { CopyTicketId } from '@/components/copy-ticket-id'
 import { useTicketDetail } from './useTicketDetail'
+import { markdownComponents } from '@/components/message-renderer/MessageRenderer'
 import { TicketAgentSection } from './TicketAgentSection'
 import { TicketNotesSection } from './TicketNotesSection'
 import { TicketRelationships } from './TicketRelationships'
@@ -40,21 +43,17 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
     agentRuns,
     isCheckingActiveAgent,
     isAgentRunning,
+    runningAgentInfo,
     completedAgentTypes,
     archivedRuns,
-    agentTypes,
     isModalOpen,
     modalAgentType,
     modalPreviousSessionId,
     shouldAutoStart,
     reconnectSessionId,
-    modalStepId,
     handleOpenAssistant,
-    handleEditPipeline,
     handleManageDocs,
     handleRunAgent,
-    handleRunPipeline,
-    handleRetryStep,
     handleModalClose,
     handleAgentStart,
     handleModalComplete,
@@ -62,15 +61,24 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
     handleHistoryRunClick,
   } = useTicketDetail({ ticket, isOpen, activeAgentRun, onAgentRunChange, onTicketUpdate })
 
-  const [viewDocPath, setViewDocPathRaw] = useState<string | null>(
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
+  const [viewArtifactId, setViewArtifactIdRaw] = useState<string | null>(
     () => searchParams.get('doc')
   )
 
-  const setViewDocPath = useCallback((path: string | null) => {
-    setViewDocPathRaw(path)
+  const setViewArtifactId = useCallback((id: string | null) => {
+    setViewArtifactIdRaw(id)
     const params = new URLSearchParams(window.location.search)
-    if (path) {
-      params.set('doc', path)
+    if (id) {
+      params.set('doc', id)
     } else {
       params.delete('doc')
     }
@@ -97,10 +105,9 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
             <span className="text-xs text-muted-foreground">•</span>
             <span className={cn(
               "text-xs font-medium",
-              ticket.status === 'completed' && "text-green-500",
+              ticket.status === 'done' && "text-green-500",
               ticket.status === 'blocked' && "text-destructive",
               ticket.status === 'in_progress' && "text-blue-500",
-              ticket.status === 'pending-enrichment' && "text-amber-500",
               (!ticket.status || ticket.status === 'open') && "text-muted-foreground"
             )}>
               {(ticket.status || 'open').toUpperCase().replace('_', ' ')}
@@ -131,7 +138,9 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
                   <FileText className="h-3 w-3 text-muted-foreground" />
                   <span className="text-xs font-medium text-muted-foreground">DESCRIPTION</span>
                 </div>
-                <p className="text-sm text-foreground whitespace-pre-wrap">{ticket.description}</p>
+                <div className="text-sm text-foreground prose-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{ticket.description}</ReactMarkdown>
+                </div>
               </div>
             )}
 
@@ -144,27 +153,23 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
 
             {/* Documentation Section */}
             <TicketDocumentationSection
+              ticketId={ticket.ticket_id}
               documentation={ticket.documentation}
               onManageDocs={handleManageDocs}
-              onViewDoc={setViewDocPath}
+              onViewDoc={setViewArtifactId}
               isAgentRunning={isAgentRunning}
               variant="desktop"
             />
 
-            {/* Agent Runs Section */}
+            {/* Agent Bank */}
             <TicketAgentSection
-              agentTypes={agentTypes}
-              pipeline={ticket.pipeline}
               isAgentRunning={isAgentRunning}
-              modalAgentType={modalAgentType}
+              runningAgentType={runningAgentInfo?.agentType}
               isCheckingActiveAgent={isCheckingActiveAgent}
               completedAgentTypes={completedAgentTypes}
               archivedRuns={archivedRuns}
               onRunAgent={handleRunAgent}
-              onRunPipeline={handleRunPipeline}
-              onRetryStep={handleRetryStep}
               onViewArchivedRun={handleViewArchivedRun}
-              onEditPipeline={handleEditPipeline}
               variant="desktop"
             />
 
@@ -199,15 +204,14 @@ export function TicketDrawer({ ticket, isOpen, onClose, activeAgentRun, onAgentR
         onComplete={handleModalComplete}
         agentRuns={agentRuns}
         onTicketUpdate={onTicketUpdate}
-        stepId={modalStepId}
       />
 
       {/* Document Viewer Modal */}
       <DocumentViewerModal
-        isOpen={!!viewDocPath}
-        onClose={() => setViewDocPath(null)}
+        isOpen={!!viewArtifactId}
+        onClose={() => setViewArtifactId(null)}
         ticketId={ticket.ticket_id}
-        docPath={viewDocPath}
+        artifactId={viewArtifactId}
       />
     </>
   )

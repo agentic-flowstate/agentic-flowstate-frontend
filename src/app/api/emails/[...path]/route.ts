@@ -4,7 +4,8 @@ import { API_BASE } from '@/lib/api/config'
 async function proxyRequest(request: NextRequest, params: Promise<{ path: string[] }>) {
   const { path } = await params
   const subPath = path.join('/')
-  const url = `${API_BASE}/api/emails/${subPath}`
+  const search = request.nextUrl.search || ''
+  const url = `${API_BASE}/api/emails/${subPath}${search}`
 
   const headers: Record<string, string> = {
     'Cookie': request.headers.get('cookie') || '',
@@ -39,5 +40,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pa
 }
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
+  return proxyRequest(request, context.params)
+}
+
+export async function DELETE(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return proxyRequest(request, context.params)
 }

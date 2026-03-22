@@ -21,6 +21,7 @@ export async function runAgent(
     `${AGENT_API_BASE}/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets/${encodeURIComponent(ticketId)}/agent-runs`,
     {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         'X-Organization': currentOrg || 'telemetryops',
@@ -53,6 +54,7 @@ export async function getAgentRuns(
   const response = await fetch(
     `${AGENT_API_BASE}/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets/${encodeURIComponent(ticketId)}/agent-runs`,
     {
+      credentials: 'include',
       headers: {
         'X-Organization': currentOrg || 'telemetryops',
       },
@@ -72,7 +74,8 @@ export async function getAgentRuns(
  */
 export async function getAgentRun(sessionId: string): Promise<AgentRun> {
   const response = await fetch(
-    `${AGENT_API_BASE}/api/agent-runs/${encodeURIComponent(sessionId)}`
+    `${AGENT_API_BASE}/api/agent-runs/${encodeURIComponent(sessionId)}`,
+    { credentials: 'include' }
   )
 
   if (!response.ok) {
@@ -95,6 +98,7 @@ export async function getActiveAgentRun(
   const response = await fetch(
     `${AGENT_API_BASE}/api/epics/${encodeURIComponent(epicId)}/slices/${encodeURIComponent(sliceId)}/tickets/${encodeURIComponent(ticketId)}/agent-runs/active`,
     {
+      credentials: 'include',
       headers: {
         'X-Organization': currentOrg || 'telemetryops',
       },

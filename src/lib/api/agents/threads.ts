@@ -9,7 +9,7 @@ import type { ThreadTicketsResponse, EmailThreadTicket } from '@/lib/types'
  * Get all tickets linked to an email thread
  */
 export async function getTicketsForThread(threadId: string): Promise<ThreadTicketsResponse> {
-  const response = await fetch(`${AGENT_API_BASE}/api/email-threads/${encodeURIComponent(threadId)}/tickets`)
+  const response = await fetch(`${AGENT_API_BASE}/api/email-threads/${encodeURIComponent(threadId)}/tickets`, { credentials: 'include' })
 
   if (!response.ok) {
     throw new Error('Failed to get tickets for thread')
@@ -29,6 +29,7 @@ export async function linkThreadToTicket(
 ): Promise<EmailThreadTicket> {
   const response = await fetch(`${AGENT_API_BASE}/api/email-threads/${encodeURIComponent(threadId)}/tickets`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ticket_id: ticketId, epic_id: epicId, slice_id: sliceId }),
   })
@@ -46,7 +47,7 @@ export async function linkThreadToTicket(
 export async function unlinkThreadFromTicket(threadId: string, ticketId: string): Promise<void> {
   const response = await fetch(
     `${AGENT_API_BASE}/api/email-threads/${encodeURIComponent(threadId)}/tickets/${encodeURIComponent(ticketId)}`,
-    { method: 'DELETE' }
+    { method: 'DELETE', credentials: 'include' }
   )
 
   if (!response.ok) {

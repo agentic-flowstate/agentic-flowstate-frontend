@@ -41,7 +41,6 @@ interface AgentRunModalProps {
   onComplete?: (outputSummary?: string) => void
   agentRuns?: AgentRun[]  // For email agent: available runs to select as context
   onTicketUpdate?: (ticket: Ticket) => void  // For ticket-assistant: auto-save guidance
-  stepId?: string  // Pipeline step ID for pipeline-aware streaming
 }
 
 // Parse structured email from agent text output
@@ -172,7 +171,6 @@ export function AgentRunModal({
   onComplete,
   agentRuns = [],
   onTicketUpdate,
-  stepId,
 }: AgentRunModalProps) {
   // Use the shared hook
   const {
@@ -219,13 +217,13 @@ export function AgentRunModal({
   const isEmailAgent = agentType === 'email'
   const isTicketAssistant = agentType === 'ticket-assistant'
   const isDocManager = agentType === 'doc-manager'
-  const isPipelineEditor = agentType === 'pipeline-editor'
-  const isInteractiveAgent = isTicketAssistant || isDocManager || isPipelineEditor
+  const isExaResearch = agentType === 'exa-research'
+  const isInteractiveAgent = isTicketAssistant || isDocManager || isExaResearch
   const hasCompletedInitialGeneration = isEmailAgent && status === 'completed' && messages.length > 0
   const hasTicketAssistantCompleted = isTicketAssistant && status === 'completed' && messages.length > 0
   const hasDocManagerCompleted = isDocManager && status === 'completed' && messages.length > 0
-  const hasPipelineEditorCompleted = isPipelineEditor && status === 'completed' && messages.length > 0
-  const hasInteractiveAgentCompleted = hasTicketAssistantCompleted || hasDocManagerCompleted || hasPipelineEditorCompleted
+  const hasExaResearchCompleted = isExaResearch && status === 'completed' && messages.length > 0
+  const hasInteractiveAgentCompleted = hasTicketAssistantCompleted || hasDocManagerCompleted || hasExaResearchCompleted
 
   // Track custom input for ticket-assistant
   const [ticketAssistantInput, setTicketAssistantInput] = useState('')
@@ -452,7 +450,6 @@ export function AgentRunModal({
       },
       isEmailAgent ? selectedSessionIds : undefined,
       customMessage || undefined,
-      stepId
     )
   }
 
@@ -744,6 +741,17 @@ export function AgentRunModal({
           />
         </div>
 
+        {/* Sticky running indicator */}
+        {(isRunning || isReconnecting || displayStatus === 'running') && messages.length > 0 && (
+          <div className="shrink-0 border-t border-border bg-background/80 backdrop-blur-sm px-6 py-2 flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
+            </span>
+            <span className="text-xs text-muted-foreground">Agent is running...</span>
+          </div>
+        )}
+
         {/* Chat input for email agent follow-up messages */}
         {isEmailAgent && (hasCompletedInitialGeneration || status === 'completed') && (
           <div className="px-6 py-4 border-t border-border shrink-0 bg-background">
@@ -791,7 +799,7 @@ export function AgentRunModal({
               <Textarea
                 value={ticketAssistantInput}
                 onChange={(e) => setTicketAssistantInput(e.target.value)}
-                placeholder={isDocManager ? "Ask about the docs, request changes..." : isPipelineEditor ? "Request pipeline changes..." : "Ask a follow-up question..."}
+                placeholder={isDocManager ? "Ask about the docs, request changes..." : isExaResearch ? "Ask a follow-up research question..." : "Ask a follow-up question..."}
                 className="min-h-[60px] max-h-[120px] resize-none"
                 disabled={isSendingMessage || isRunning}
                 onKeyDown={(e) => {
@@ -803,7 +811,7 @@ export function AgentRunModal({
               />
               <Button
                 size="icon"
-                className={cn("h-[60px] w-[60px] shrink-0", isDocManager ? "bg-blue-500 hover:bg-blue-600" : isPipelineEditor ? "bg-purple-500 hover:bg-purple-600" : "bg-emerald-500 hover:bg-emerald-600")}
+                className={cn("h-[60px] w-[60px] shrink-0", (isDocManager || isExaResearch) ? "bg-blue-500 hover:bg-blue-600" : "bg-emerald-500 hover:bg-emerald-600")}
                 onClick={handleTicketAssistantFollowUp}
                 disabled={!ticketAssistantInput.trim() || isSendingMessage || isRunning}
               >

@@ -1,11 +1,14 @@
 "use client"
 
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { FileText, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden'
 import { cn } from '@/lib/utils'
 import { Ticket } from '@/lib/types'
+import { markdownComponents } from '@/components/message-renderer/MessageRenderer'
 import { CopyTicketId } from '@/components/copy-ticket-id'
 
 interface TicketDetailSheetProps {
@@ -40,10 +43,9 @@ export function TicketDetailSheet({
                 <span className="text-xs text-muted-foreground">•</span>
                 <span className={cn(
                   "text-xs font-medium",
-                  ticket.status === 'completed' && "text-green-500",
+                  ticket.status === 'done' && "text-green-500",
                   ticket.status === 'blocked' && "text-destructive",
                   ticket.status === 'in_progress' && "text-blue-500",
-                  ticket.status === 'pending-enrichment' && "text-amber-500",
                   (!ticket.status || ticket.status === 'open') && "text-muted-foreground"
                 )}>
                   {(ticket.status || 'open').toUpperCase().replace('_', ' ')}
@@ -65,7 +67,9 @@ export function TicketDetailSheet({
                     <FileText className="h-3 w-3 text-muted-foreground" />
                     <span className="text-xs font-medium text-muted-foreground">DESCRIPTION</span>
                   </div>
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{ticket.description}</p>
+                  <div className="text-sm text-foreground prose-sm">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{ticket.description}</ReactMarkdown>
+                  </div>
                 </div>
               )}
 

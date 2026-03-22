@@ -12,10 +12,11 @@ export interface ConversationChatOptions {
   basePath: string
   enrichMessage?: (message: string) => string
   onEvent?: (event: StreamEvent) => void
+  extraPayload?: Record<string, unknown>
 }
 
 export function useConversationChat(options: ConversationChatOptions) {
-  const { sseOrganization, chatApiEndpoint, basePath, enrichMessage, onEvent } = options
+  const { sseOrganization, chatApiEndpoint, basePath, enrichMessage, onEvent, extraPayload } = options
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -46,7 +47,9 @@ export function useConversationChat(options: ConversationChatOptions) {
     finalizeAllTools,
     scrollRef,
     userScrolledRef,
+    userScrolledUp,
     handleScroll,
+    scrollToBottom,
   } = agentStream
 
   // Sync URL when conversation changes (preserve other params like ?ticket=)
@@ -269,6 +272,7 @@ export function useConversationChat(options: ConversationChatOptions) {
         body: JSON.stringify({
           message: finalMessage,
           conversation_id: convId,
+          ...extraPayload,
         })
       })
 
@@ -357,6 +361,8 @@ export function useConversationChat(options: ConversationChatOptions) {
     isRunning,
     scrollRef,
     handleScroll,
+    userScrolledUp,
+    scrollToBottom,
     toggleToolExpanded: agentStream.toggleToolExpanded,
     toggleToolsCollapsed: agentStream.toggleToolsCollapsed,
 

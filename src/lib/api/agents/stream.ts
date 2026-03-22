@@ -188,7 +188,6 @@ export async function streamAgentRunStructured(
   onError: (error: Error) => void,
   selectedSessionIds?: string[],
   customInputMessage?: string,
-  stepId?: string
 ): Promise<void> {
   const currentOrg = getCurrentOrg()
 
@@ -208,7 +207,6 @@ export async function streamAgentRunStructured(
           previous_session_id: previousSessionId,
           selected_session_ids: selectedSessionIds,
           custom_input_message: customInputMessage,
-          step_id: stepId,
         } as RunAgentRequest),
       }
     )

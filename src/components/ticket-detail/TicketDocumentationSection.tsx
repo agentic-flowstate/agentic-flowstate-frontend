@@ -1,19 +1,22 @@
 "use client"
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { FileText, Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { ArtifactDocSummary } from '@/lib/types'
 
 interface TicketDocumentationSectionProps {
+  ticketId: string
   documentation?: string[]
   onManageDocs?: () => void
-  onViewDoc?: (path: string) => void
+  onViewDoc?: (artifactId: string) => void
   isAgentRunning: boolean
   variant?: 'desktop' | 'mobile'
 }
 
 export function TicketDocumentationSection({
+  ticketId,
   documentation,
   onManageDocs,
   onViewDoc,
@@ -25,40 +28,62 @@ export function TicketDocumentationSection({
   const textSize = isMobile ? 'text-sm' : 'text-xs'
   const smallTextSize = isMobile ? 'text-xs' : 'text-[10px]'
 
-  const docs = documentation ?? []
+  const docIds = documentation ?? []
+  const [summaries, setSummaries] = useState<ArtifactDocSummary[]>([])
+
+  useEffect(() => {
+    if (docIds.length === 0) {
+      setSummaries([])
+      return
+    }
+
+    let cancelled = false
+    fetch(`/api/tickets/${ticketId}/docs`, { credentials: 'include' })
+      .then(res => res.ok ? res.json() : [])
+      .then((data: ArtifactDocSummary[]) => {
+        if (!cancelled) setSummaries(data)
+      })
+      .catch(() => {
+        if (!cancelled) setSummaries([])
+      })
+
+    return () => { cancelled = true }
+  }, [ticketId, docIds.length])
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
         <FileText className={cn(iconSize, "text-muted-foreground")} />
         <span className={cn(textSize, "font-medium text-muted-foreground")}>DOCUMENTATION</span>
-        {docs.length > 0 && (
+        {summaries.length > 0 && (
           <span className={cn(smallTextSize, "ml-auto text-muted-foreground")}>
-            {docs.length} file{docs.length !== 1 ? 's' : ''}
+            {summaries.length} artifact{summaries.length !== 1 ? 's' : ''}
           </span>
         )}
       </div>
 
-      {docs.length > 0 ? (
+      {summaries.length > 0 ? (
         <div className={cn("space-y-1 mb-2", isMobile ? "" : "")}>
-          {docs.map((path) => {
-            const filename = path.split('/').pop() || path
-            return (
-              <button
-                key={path}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1 rounded bg-muted/30 w-full text-left",
-                  "cursor-pointer hover:bg-muted/50 transition-colors group",
-                  textSize
-                )}
-                title={path}
-                onClick={() => onViewDoc?.(path)}
-              >
-                <FileText className={cn(iconSize, "text-muted-foreground shrink-0")} />
-                <span className="truncate text-muted-foreground group-hover:text-foreground group-hover:underline transition-colors">{filename}</span>
-              </button>
-            )
-          })}
+          {summaries.map((doc) => (
+            <button
+              key={doc.artifact_id}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded bg-muted/30 w-full text-left",
+                "cursor-pointer hover:bg-muted/50 transition-colors group",
+                textSize
+              )}
+              title={doc.artifact_id}
+              onClick={() => onViewDoc?.(doc.artifact_id)}
+            >
+              <FileText className={cn(iconSize, "text-muted-foreground shrink-0")} />
+              <span className="truncate text-muted-foreground group-hover:text-foreground group-hover:underline transition-colors">{doc.title}</span>
+              <span className={cn(smallTextSize, "ml-auto text-muted-foreground/60 shrink-0")}>{doc.artifact_type}</span>
+            </button>
+          ))}
+        </div>
+      ) : docIds.length > 0 ? (
+        <div className={cn("text-center py-2 text-muted-foreground mb-2", smallTextSize)}>
+          Loading artifacts...
         </div>
       ) : (
         <div className={cn("text-center py-2 text-muted-foreground mb-2", smallTextSize)}>

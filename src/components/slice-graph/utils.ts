@@ -1,6 +1,6 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import { MarkerType, type Node, type Edge } from 'reactflow'
-import type { GraphTicket, PipelineStep, Epic, Slice } from '@/lib/types'
+import type { GraphTicket, Epic, Slice } from '@/lib/types'
 
 const elk = new ELK()
 
@@ -56,28 +56,12 @@ export function getAgentName(agentType: string): string {
 }
 
 /**
- * Derive effective ticket status from pipeline steps
+ * Derive effective ticket status for graph display
  */
 export function deriveTicketStatus(ticket: GraphTicket): 'completed' | 'in-progress' | 'blocked' | 'queued' {
-  const pipeline = ticket.pipeline
-
-  // If no pipeline, use ticket status
-  if (!pipeline || !pipeline.steps || pipeline.steps.length === 0) {
-    if (ticket.status === 'completed' || ticket.status === 'closed') return 'completed'
-    if (ticket.status === 'blocked') return 'blocked'
-    if (ticket.status === 'in_progress' || ticket.status === 'pending-enrichment') return 'in-progress'
-    return 'queued'
-  }
-
-  const steps = pipeline.steps
-  const allCompleted = steps.every(s => s.status === 'completed')
-  const anyRunning = steps.some(s => s.status === 'running')
-  const anyAwaiting = steps.some(s => s.status === 'awaiting_approval')
-  const anyFailed = steps.some(s => s.status === 'failed')
-
-  if (allCompleted) return 'completed'
-  if (anyFailed || ticket.status === 'blocked') return 'blocked'
-  if (anyRunning || anyAwaiting) return 'in-progress'
+  if (ticket.status === 'done') return 'completed'
+  if (ticket.status === 'blocked') return 'blocked'
+  if (ticket.status === 'in_progress') return 'in-progress'
   return 'queued'
 }
 
@@ -99,11 +83,10 @@ export async function getLayoutedElements(
   // Build ELK graph
   const elkNodes = sliceTickets.map(ticket => {
     const isExpanded = expandedIds.has(ticket.ticket_id)
-    const stepsCount = ticket.pipeline?.steps?.length || 5
     return {
       id: ticket.ticket_id,
       width: isExpanded ? NODE_WIDTH_EXPANDED : NODE_WIDTH_COLLAPSED,
-      height: isExpanded ? getExpandedHeight(stepsCount) : NODE_HEIGHT_COLLAPSED,
+      height: isExpanded ? getExpandedHeight(3) : NODE_HEIGHT_COLLAPSED,
     }
   })
 

@@ -2,8 +2,8 @@
 
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
-import type { GraphTicket, PipelineStep } from '@/lib/types'
-import { getAgentIcon, getCrossSliceDependencies } from './utils'
+import type { GraphTicket } from '@/lib/types'
+import { getCrossSliceDependencies } from './utils'
 import { cn } from '@/lib/utils'
 import { Flag } from 'lucide-react'
 import { CopyTicketId } from '@/components/copy-ticket-id'
@@ -18,35 +18,8 @@ interface TicketNodeData {
   isProcessing?: boolean
 }
 
-function StepDot({ step }: { step: PipelineStep }) {
-  const statusClasses = {
-    completed: 'bg-green-700 border-green-500',
-    running: 'bg-blue-800 border-blue-500 animate-pulse',
-    awaiting_approval: 'bg-amber-800 border-amber-500 animate-pulse',
-    queued: 'bg-zinc-800 border-zinc-600',
-    failed: 'bg-red-800 border-red-500',
-    skipped: 'bg-zinc-700 border-zinc-500 opacity-50',
-  }
-
-  const typeClasses = step.execution_type === 'manual' ? 'border-dashed' : 'border-solid'
-
-  return (
-    <div
-      className={cn(
-        'w-5 h-5 rounded flex items-center justify-center text-[11px] border',
-        statusClasses[step.status],
-        typeClasses
-      )}
-      title={`${step.agent_type} - ${step.status}`}
-    >
-      {getAgentIcon(step.agent_type)}
-    </div>
-  )
-}
-
 function TicketNodeComponent({ data }: NodeProps<TicketNodeData>) {
   const { ticket, status, allTickets, onCrossSliceClick, isSelected, isProcessing } = data
-  const steps = ticket.pipeline?.steps || []
   const blockedBy = ticket.blocked_by || []
   const isMilestone = ticket.ticket_type === 'milestone'
 
@@ -151,15 +124,6 @@ function TicketNodeComponent({ data }: NodeProps<TicketNodeData>) {
 
         {/* Title */}
         <div className="text-xs font-semibold leading-tight mb-2.5 line-clamp-2">{ticket.title}</div>
-
-        {/* Pipeline mini progress */}
-        {steps.length > 0 && (
-          <div className="flex gap-1 mb-2.5 flex-wrap">
-            {steps.map((step, i) => (
-              <StepDot key={i} step={step} />
-            ))}
-          </div>
-        )}
 
         {/* Meta row */}
         <div className="flex justify-between items-center">

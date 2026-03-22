@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import {
@@ -8,7 +8,6 @@ import {
   Video,
   ArrowLeft,
   AlertTriangle,
-  Download,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/auth-context'
 import { endMeeting, finalizeMeetingTranscript, getApiBaseUrl } from '@/lib/api/meetings'
@@ -37,9 +36,6 @@ export default function MeetingRoomPage() {
   const [isMuted, setIsMuted] = useState(devicePreferences.isMuted)
   const [isVideoOff, setIsVideoOff] = useState(devicePreferences.isVideoOff)
   const [copied, setCopied] = useState(false)
-  const [failedAudioBlob, setFailedAudioBlob] = useState<Blob | null>(null)
-
-  const localVideoRef = useRef<HTMLVideoElement>(null)
 
   // Hooks
   const devices = useMediaDevices(devicePreferences)
@@ -62,21 +58,17 @@ export default function MeetingRoomPage() {
     if (lobby.error) setError(lobby.error)
   }, [lobby.error])
 
-  // Attach stream to local video when joined
-  useEffect(() => {
-    if (localVideoRef.current && lobby.localStream && meetingState === 'joined') {
-      localVideoRef.current.srcObject = lobby.localStream
-    }
-  }, [lobby.localStream, meetingState])
-
-  // Warn user before leaving if in meeting
+  // Warn user before leaving if actively transcribing
   useEffect(() => {
     if (meetingState !== 'joined') return
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = 'You have an active meeting. Audio may not be saved if you leave.'
+      if (!recorder.isRecording) return
 
+      e.preventDefault()
+      e.returnValue = 'You have an active transcription. Audio may not be saved if you leave.'
+
+      // Try to send in-progress audio via beacon
       const blob = recorder.getRecordedBlob()
       const speakerName = currentUser?.name
       if (blob && blob.size > 0 && speakerName) {
@@ -108,7 +100,6 @@ export default function MeetingRoomPage() {
     try {
       await peers.joinMeeting(lobby.localStream)
       setMeetingState('joined')
-      recorder.startRecording(lobby.localStream)
     } catch (err) {
       console.error('Failed to join meeting:', err)
       setError(err instanceof Error ? err.message : 'Failed to join meeting')
@@ -120,28 +111,29 @@ export default function MeetingRoomPage() {
     const isLastParticipant = peers.participants.length <= 1
     setMeetingState('ending')
 
-    const audioBlob = await recorder.stopRecording()
-
-    // CRITICAL: Auto-save local backup BEFORE attempting upload
-    if (audioBlob && audioBlob.size > 0) {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-      const backupFilename = `meeting-${roomId}-backup-${timestamp}.webm`
-      console.log(`Auto-saving local backup: ${backupFilename}, size: ${audioBlob.size} bytes`)
-      recorder.downloadAudioBlob(audioBlob, backupFilename)
+    // If actively transcribing, send stop signal and stop recording
+    if (recorder.isRecording) {
+      peers.signalingRef.current?.sendTranscriptionStopped(roomId, userId)
+      const audioBlob = await recorder.stopRecording()
+      if (audioBlob && audioBlob.size > 0) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        recorder.downloadAudioBlob(audioBlob, `meeting-${roomId}-final-${timestamp}.webm`)
+      }
     }
 
     peers.cleanupConnections()
     lobby.streamRef.current?.getTracks().forEach((track) => track.stop())
 
+    const hasRecordedSegments = recorder.hasSegments()
     let uploadSucceeded = false
     const speakerName = currentUser?.name
-    if (audioBlob && audioBlob.size > 0 && speakerName) {
+
+    if (hasRecordedSegments && speakerName) {
       try {
-        await recorder.uploadAudio(roomId, speakerName)
+        await recorder.uploadAllSegments(roomId, speakerName)
         uploadSucceeded = true
       } catch (err) {
-        setFailedAudioBlob(audioBlob)
-        setError(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}. Your recording was auto-saved to Downloads.`)
+        setError(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}. Segment backups were saved to Downloads.`)
         setMeetingState('upload_failed')
         return
       }
@@ -149,13 +141,15 @@ export default function MeetingRoomPage() {
       uploadSucceeded = true
     }
 
-    if (isLastParticipant && uploadSucceeded) {
+    if (isLastParticipant) {
       try {
         await endMeeting(roomId)
         console.log('Meeting ended')
-        finalizeMeetingTranscript(roomId).catch(err => {
-          console.error('Transcript finalization failed:', err)
-        })
+        if (hasRecordedSegments && uploadSucceeded) {
+          finalizeMeetingTranscript(roomId).catch(err => {
+            console.error('Transcript finalization failed:', err)
+          })
+        }
       } catch (err) {
         console.error('Failed to end meeting:', err)
       }
@@ -201,6 +195,54 @@ export default function MeetingRoomPage() {
       setDevicePreferences({ videoDeviceId: value })
     }
   }
+
+  // Track whether WE initiated transcription (vs receiving a remote signal)
+  const isLocalTranscriberRef = useRef(false)
+
+  const toggleTranscribe = useCallback(() => {
+    if (!lobby.localStream) return
+
+    if (peers.transcriptionActive) {
+      // Stop transcription for everyone
+      peers.signalingRef.current?.sendTranscriptionStopped(roomId, userId)
+      // Stop our own recording
+      recorder.stopRecording().then((blob) => {
+        if (blob && blob.size > 0) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+          recorder.downloadAudioBlob(blob, `meeting-${roomId}-segment-${timestamp}.webm`)
+        }
+      })
+      isLocalTranscriberRef.current = false
+    } else {
+      // Start transcription for everyone
+      peers.signalingRef.current?.sendTranscriptionStarted(roomId, userId)
+      recorder.startRecording(lobby.localStream)
+      isLocalTranscriberRef.current = true
+    }
+  }, [lobby.localStream, peers.transcriptionActive, peers.signalingRef, roomId, userId, recorder])
+
+  // React to remote transcription signals: auto-start/stop local recording
+  const prevTranscriptionActiveRef = useRef(false)
+  useEffect(() => {
+    if (meetingState !== 'joined') return
+
+    const wasActive = prevTranscriptionActiveRef.current
+    const isActive = peers.transcriptionActive
+    prevTranscriptionActiveRef.current = isActive
+
+    if (isActive && !wasActive && !recorder.isRecording && lobby.localStream) {
+      // Someone else started transcription — start our recording
+      recorder.startRecording(lobby.localStream)
+    } else if (!isActive && wasActive && recorder.isRecording) {
+      // Transcription stopped remotely — stop our recording
+      recorder.stopRecording().then((blob) => {
+        if (blob && blob.size > 0) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+          recorder.downloadAudioBlob(blob, `meeting-${roomId}-segment-${timestamp}.webm`)
+        }
+      })
+    }
+  }, [peers.transcriptionActive, meetingState, recorder, lobby.localStream, roomId])
 
   // --- Render ---
 
@@ -263,8 +305,12 @@ export default function MeetingRoomPage() {
             </div>
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-foreground mb-2">Saving transcript...</h1>
-            <p className="text-muted-foreground text-sm">Please wait while we process your recording</p>
+            <h1 className="text-xl font-semibold text-foreground mb-2">
+              {recorder.hasSegments() ? 'Uploading transcript...' : 'Leaving meeting...'}
+            </h1>
+            {recorder.hasSegments() && (
+              <p className="text-muted-foreground text-sm">Please wait while we upload your recording</p>
+            )}
           </div>
         </div>
       </div>
@@ -288,18 +334,6 @@ export default function MeetingRoomPage() {
             </p>
           </div>
           <div className="flex flex-col gap-3">
-            {failedAudioBlob && (
-              <Button
-                onClick={() => {
-                  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-                  recorder.downloadAudioBlob(failedAudioBlob, `meeting-${roomId}-${timestamp}.webm`)
-                }}
-                className="w-full"
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download Recording Again
-              </Button>
-            )}
             <Button
               variant="outline"
               onClick={() => router.push('/meetings')}
@@ -321,12 +355,24 @@ export default function MeetingRoomPage() {
       userId={userId}
       participants={peers.participants}
       speakingUsers={peers.speakingUsers}
+      screenSharers={peers.screenSharers}
+      isScreenSharing={peers.screenSharers.includes(userId)}
+      screenStreamRef={peers.screenStreamRef}
+      isTranscribing={peers.transcriptionActive}
+      onToggleTranscribe={toggleTranscribe}
+      onToggleScreenShare={() => {
+        if (peers.screenSharers.includes(userId)) {
+          peers.stopScreenShare()
+        } else {
+          peers.startScreenShare()
+        }
+      }}
       isMuted={isMuted}
       isVideoOff={isVideoOff}
       isRecording={recorder.isRecording}
       copied={copied}
-      localVideoRef={localVideoRef}
-      remoteVideosRef={peers.remoteVideosRef}
+      localStream={lobby.localStream}
+      bindRemoteVideo={peers.bindRemoteVideo}
       audioDevices={devices.audioDevices}
       videoDevices={devices.videoDevices}
       selectedAudioDevice={devices.selectedAudioDevice}

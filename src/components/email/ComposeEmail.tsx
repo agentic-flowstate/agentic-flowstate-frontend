@@ -1,10 +1,12 @@
 "use client"
 
+import { useState } from 'react'
 import { X, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface ComposeState {
   from: string
@@ -20,8 +22,16 @@ interface ComposeEmailProps {
   onSend: () => void
   onClose: () => void
   sending: boolean
-  fromAddress: string
+  fromAddresses: string[]
+  mode?: 'compose' | 'reply' | 'reply-all' | 'forward'
 }
+
+const MODE_LABELS = {
+  'compose': 'New Message',
+  'reply': 'Reply',
+  'reply-all': 'Reply All',
+  'forward': 'Forward',
+} as const
 
 export function ComposeEmail({
   compose,
@@ -29,8 +39,16 @@ export function ComposeEmail({
   onSend,
   onClose,
   sending,
-  fromAddress,
+  fromAddresses,
+  mode = 'compose',
 }: ComposeEmailProps) {
+  const [selectedFrom, setSelectedFrom] = useState(fromAddresses[0] || '')
+
+  const handleFromChange = (value: string) => {
+    setSelectedFrom(value)
+    onChange({ from: value })
+  }
+
   return (
     <>
       {/* Compose Header */}
@@ -43,7 +61,7 @@ export function ComposeEmail({
           >
             <X className="h-4 w-4" />
           </Button>
-          <h2 className="font-semibold">New Message</h2>
+          <h2 className="font-semibold">{MODE_LABELS[mode]}</h2>
         </div>
         <Button
           onClick={onSend}
@@ -58,6 +76,32 @@ export function ComposeEmail({
       {/* Compose Form */}
       <div className="flex-1 overflow-y-auto p-4">
         <Card className="p-4 space-y-4">
+          {/* From Address */}
+          <div className="space-y-2">
+            <Label htmlFor="from">From</Label>
+            {fromAddresses.length > 1 ? (
+              <Select
+                value={selectedFrom}
+                onValueChange={handleFromChange}
+              >
+                <SelectTrigger id="from">
+                  <SelectValue placeholder="Select sender address" />
+                </SelectTrigger>
+                <SelectContent>
+                  {fromAddresses.map((addr) => (
+                    <SelectItem key={addr} value={addr}>
+                      {addr}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="text-sm text-muted-foreground py-2">
+                {fromAddresses[0] || 'No accounts configured'}
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="to">To</Label>
             <Input
@@ -102,10 +146,6 @@ export function ComposeEmail({
               value={compose.body}
               onChange={(e) => onChange({ body: e.target.value })}
             />
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            Sending from: {fromAddress}
           </div>
         </Card>
       </div>

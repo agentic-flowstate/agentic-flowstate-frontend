@@ -90,6 +90,8 @@ export function getRoadmapLayoutedElements(
       id: milestone.ticket_id,
       type: 'ticket',
       position: { x: mx, y: my },
+      width: MILESTONE_W,
+      height: MILESTONE_H,
       data: {
         ticket: milestone,
         expanded: false,
@@ -113,6 +115,8 @@ export function getRoadmapLayoutedElements(
         id: task.ticket_id,
         type: 'ticket',
         position: { x: taskX, y: taskY },
+        width: TASK_W,
+        height: TASK_H,
         data: {
           ticket: task,
           expanded: false,
@@ -208,6 +212,8 @@ export function getRoadmapLayoutedElements(
       id: branch.ticket_id,
       type: 'ticket',
       position: { x: bx, y: by },
+      width: MILESTONE_W,
+      height: MILESTONE_H,
       data: {
         ticket: branch,
         expanded: false,
@@ -230,6 +236,8 @@ export function getRoadmapLayoutedElements(
         id: task.ticket_id,
         type: 'ticket',
         position: { x: branchTaskX, y: branchTaskY },
+        width: TASK_W,
+        height: TASK_H,
         data: {
           ticket: task,
           expanded: false,
@@ -297,6 +305,8 @@ export function getRoadmapLayoutedElements(
         id: task.ticket_id,
         type: 'ticket',
         position: { x: TRUNK_X + MILESTONE_W + TASK_GAP_X, y: uy },
+        width: TASK_W,
+        height: TASK_H,
         data: {
           ticket: task,
           expanded: false,

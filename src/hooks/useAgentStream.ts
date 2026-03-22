@@ -55,7 +55,9 @@ export interface UseAgentStreamResult {
   // Refs for scroll management
   scrollRef: React.RefObject<HTMLDivElement>
   userScrolledRef: React.MutableRefObject<boolean>
+  userScrolledUp: boolean
   handleScroll: () => void
+  scrollToBottom: () => void
 }
 
 /**
@@ -72,6 +74,7 @@ export function useAgentStream(): UseAgentStreamResult {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const userScrolledRef = useRef(false)
+  const [userScrolledUp, setUserScrolledUp] = useState(false)
 
   // Track user scroll to avoid auto-scrolling when user is reading
   const handleScroll = useCallback(() => {
@@ -79,6 +82,15 @@ export function useAgentStream(): UseAgentStreamResult {
       const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
       userScrolledRef.current = !isNearBottom
+      setUserScrolledUp(!isNearBottom)
+    }
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+      userScrolledRef.current = false
+      setUserScrolledUp(false)
     }
   }, [])
 
@@ -414,7 +426,9 @@ export function useAgentStream(): UseAgentStreamResult {
 
     scrollRef: scrollRef as React.RefObject<HTMLDivElement>,
     userScrolledRef,
+    userScrolledUp,
     handleScroll,
+    scrollToBottom,
   }
 }
 

@@ -30,15 +30,15 @@ export function SidebarDesktop({
   onSliceToggle,
   viewMode = 'slice'
 }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(true)
   const [width, setWidth] = useState(SIDEBAR_DEFAULT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const storedCollapsed = localStorage.getItem('sidebar-collapsed')
-    if (storedCollapsed === 'true') {
-      setIsCollapsed(true)
+    if (storedCollapsed === 'false') {
+      setIsCollapsed(false)
     }
     const storedWidth = localStorage.getItem('sidebar-width')
     if (storedWidth) {

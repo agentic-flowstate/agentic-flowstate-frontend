@@ -61,25 +61,32 @@ export function OrgGraph({
     return () => { cancelled = true }
   }, [tickets, epics, slices])
 
-  // Add selection and processing state to nodes
-  const nodesWithState = useMemo(() => {
-    return layoutedNodes.map(node => ({
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges)
+
+  // Full replace when layout changes
+  useEffect(() => {
+    setNodes(layoutedNodes.map(node => ({
       ...node,
       data: {
         ...node.data,
         isSelected: node.id === selectedTicketId,
         isProcessing: processingTicketIds?.has(node.id) ?? false,
       },
-    }))
-  }, [layoutedNodes, selectedTicketId, processingTicketIds])
+    })))
+  }, [layoutedNodes, setNodes])
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(nodesWithState)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges)
-
-  // Sync React Flow state when layout or selection changes
+  // Update node data in-place (preserves dragged positions)
   useEffect(() => {
-    setNodes(nodesWithState)
-  }, [nodesWithState, setNodes])
+    setNodes(prev => prev.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        isSelected: node.id === selectedTicketId,
+        isProcessing: processingTicketIds?.has(node.id) ?? false,
+      },
+    })))
+  }, [selectedTicketId, processingTicketIds, setNodes])
 
   useEffect(() => {
     setEdges(layoutedEdges)

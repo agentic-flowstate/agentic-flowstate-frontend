@@ -17,12 +17,11 @@ export interface ApiMessage {
   conversation_id: string
   role: string
   content: string
-  tool_uses?: Array<{
+  tool_call_summaries?: Array<{
     id: string
-    name: string
-    input?: Record<string, unknown>
-    result?: string
-    is_error?: boolean
+    tool_name: string
+    is_error: boolean
+    result_preview?: string
   }>
   created_at: number
   message_index: number
@@ -48,14 +47,14 @@ export function apiToLocal(api: ApiConversation): StoredConversation {
       if (m.content) {
         blocks.push({ type: 'text', content: m.content })
       }
-      if (m.tool_uses && m.tool_uses.length > 0) {
+      if (m.tool_call_summaries && m.tool_call_summaries.length > 0) {
         blocks.push({
           type: 'tool_calls',
-          toolCalls: m.tool_uses.map(t => ({
+          toolCalls: m.tool_call_summaries.map(t => ({
             id: t.id,
-            name: t.name,
-            input: t.input || {},
-            result: t.result,
+            name: t.tool_name,
+            input: {},
+            result: t.result_preview,
             isError: t.is_error,
             isExpanded: false,
             status: 'completed' as const
