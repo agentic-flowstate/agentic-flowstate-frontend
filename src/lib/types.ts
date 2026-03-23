@@ -1,5 +1,5 @@
 export type TicketStatus = "open" | "in_progress" | "done" | "blocked"
-export type TicketType = "task" | "milestone"
+export type TicketType = "task" | "milestone" | "bug"
 
 export interface Epic {
   epic_id: string
