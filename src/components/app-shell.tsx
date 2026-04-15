@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { Mail, LayoutDashboard, Video, Bot, User, LogOut, Home, Volume2, MessageCircle, BookOpen, Shield } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useOrganization } from '@/contexts/organization-context'
-import { useAuth, hasHomeAccess, isAdmin } from '@/contexts/auth-context'
+import { useAuth, isAdmin } from '@/contexts/auth-context'
 import { DmProvider, useDm } from '@/contexts/dm-context'
 import { EmailProvider, useEmail } from '@/contexts/email-context'
 import { DmChatWidget } from '@/components/dm-chat-widget'
@@ -57,7 +57,7 @@ function AppShellInner({ children }: AppShellProps) {
               [{selectedOrg?.id || 'no-org'}]
             </span>
             <nav className="flex items-center gap-1 shrink-0">
-              {hasHomeAccess(user) && (
+              {isAdmin(user) && (
                 <Link
                   href="/home"
                   className={cn(

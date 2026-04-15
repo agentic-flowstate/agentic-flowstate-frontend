@@ -34,11 +34,6 @@ export function isOrgOwner(user: AuthUser | null, org: string): boolean {
   return user.organizations.some(o => o.organization === org && o.role === 'owner')
 }
 
-/** Check if user has access to the home page (__home org) */
-export function hasHomeAccess(user: AuthUser | null): boolean {
-  return hasOrgAccess(user, '__home')
-}
-
 /** Check if user is an admin */
 export function isAdmin(user: AuthUser | null): boolean {
   return !!user?.is_admin

@@ -44,11 +44,10 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const { user } = useAuth()
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null)
 
-  // Derive organizations from user.organizations (excludes __home, which is a virtual org for the home page)
+  // Derive organizations from user.organizations
   const organizations = useMemo<Organization[]>(() => {
     if (!user?.organizations) return []
     return user.organizations
-      .filter(o => o.organization !== '__home')
       .map(o => ({
         id: o.organization,
         name: o.organization,

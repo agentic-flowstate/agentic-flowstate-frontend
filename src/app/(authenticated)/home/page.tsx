@@ -6,7 +6,7 @@ import { redirect, useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import { useAuth, hasHomeAccess } from '@/contexts/auth-context'
+import { useAuth, isAdmin } from '@/contexts/auth-context'
 import { MessageRenderer } from '@/components/message-renderer'
 import { ConversationSidebar } from '@/components/conversation-sidebar'
 import { useConversationChat } from '@/hooks/useConversationChat'
@@ -30,7 +30,7 @@ function enrichMessageWithTimestamp(message: string): string {
 function HomeContent() {
   const { user } = useAuth()
 
-  if (!hasHomeAccess(user)) {
+  if (!isAdmin(user)) {
     redirect('/workspace')
   }
 
