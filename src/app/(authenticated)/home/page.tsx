@@ -10,7 +10,7 @@ import { useAuth, isAdmin } from '@/contexts/auth-context'
 import { MessageRenderer } from '@/components/message-renderer'
 import { ConversationSidebar } from '@/components/conversation-sidebar'
 import { useConversationChat } from '@/hooks/useConversationChat'
-import { DailyPlanSidebar, type WorkloadItem } from './DailyPlanSidebar'
+import { DailyPlanSidebar, type FocusItem } from './DailyPlanSidebar'
 import { TicketDetail } from '@/components/ticket-detail'
 import { getTicketById } from '@/lib/api/tickets'
 import type { Ticket } from '@/lib/types'
@@ -73,7 +73,7 @@ function HomeContent() {
     router.replace(newUrl, { scroll: false })
   }, [selectedTicketId, searchParams, router])
 
-  const handleTicketClick = useCallback(async (item: WorkloadItem) => {
+  const handleTicketClick = useCallback(async (item: FocusItem) => {
     const ticket = await getTicketById(item.ticket_id)
     if (ticket) setSelectedTicket(ticket)
   }, [])

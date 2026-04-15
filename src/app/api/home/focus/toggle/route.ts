@@ -3,24 +3,23 @@ import { API_BASE } from '@/lib/api/config'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { organization } = body as { organization: string }
+  const { id } = body as { id: string }
 
-  if (!organization) {
-    return NextResponse.json({ error: 'organization required' }, { status: 400 })
+  if (!id) {
+    return NextResponse.json({ error: 'id required' }, { status: 400 })
   }
 
-  const res = await fetch(`${API_BASE}/api/project-workload/pull`, {
+  const res = await fetch(`${API_BASE}/api/focus/toggle`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Cookie: request.headers.get('cookie') || '',
     },
-    body: JSON.stringify({ organization }),
+    body: JSON.stringify({ id }),
   })
 
   if (!res.ok) {
-    const text = await res.text()
-    return NextResponse.json({ error: text || 'Failed to pull ticket' }, { status: res.status })
+    return NextResponse.json({ error: 'Failed to toggle item' }, { status: res.status })
   }
 
   const data = await res.json()

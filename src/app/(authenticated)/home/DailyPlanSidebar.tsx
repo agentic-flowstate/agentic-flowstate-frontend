@@ -22,7 +22,7 @@ interface DailyPlan {
   items: PlanItem[]
 }
 
-export interface WorkloadItem {
+export interface FocusItem {
   id: string
   organization: string
   ticket_id: string
@@ -57,7 +57,7 @@ function formatTime(time: string): string {
 }
 
 interface DailyPlanSidebarProps {
-  onTicketClick?: (item: WorkloadItem) => void
+  onTicketClick?: (item: FocusItem) => void
   selectedTicketId?: string | null
 }
 
@@ -67,7 +67,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
   const [plan, setPlan] = useState<DailyPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set())
-  const [workload, setWorkload] = useState<WorkloadItem[]>([])
+  const [focus, setFocus] = useState<FocusItem[]>([])
   const [pullingOrgs, setPullingOrgs] = useState<Set<string>>(new Set())
   const [pullErrors, setPullErrors] = useState<Record<string, string>>({})
   const [processingTicketIds, setProcessingTicketIds] = useState<Set<string>>(new Set())
@@ -162,28 +162,28 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
     }
   }, [selectedDate])
 
-  const fetchWorkload = useCallback(async () => {
+  const fetchFocus = useCallback(async () => {
     try {
-      const res = await fetch('/api/home/project-workload')
+      const res = await fetch('/api/home/focus')
       if (res.ok) {
-        const data: WorkloadItem[] = await res.json()
-        setWorkload(data)
+        const data: FocusItem[] = await res.json()
+        setFocus(data)
       }
     } catch (e) {
-      console.error('Failed to fetch workload:', e)
+      console.error('Failed to fetch focus:', e)
     }
   }, [])
 
   useEffect(() => {
-    fetchWorkload()
-  }, [fetchWorkload])
+    fetchFocus()
+  }, [fetchFocus])
 
-  // Build lookup of workload ticket IDs for fast SSE filtering
-  const workloadTicketIds = useMemo(() => new Set(workload.map(w => w.ticket_id)), [workload])
+  // Build lookup of focus ticket IDs for fast SSE filtering
+  const focusTicketIds = useMemo(() => new Set(focus.map(w => w.ticket_id)), [focus])
 
   // Track processing state via initial fetch + SSE for real-time updates
   useEffect(() => {
-    if (workload.length === 0) return
+    if (focus.length === 0) return
 
     const controllers: AbortController[] = []
 
@@ -191,7 +191,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
     async function initialCheck() {
       const running = new Set<string>()
       await Promise.all(
-        workload.map(async (w) => {
+        focus.map(async (w) => {
           try {
             const activeRun = await getActiveAgentRun(w.epic_id, w.slice_id, w.ticket_id)
             if (activeRun) running.add(w.ticket_id)
@@ -204,7 +204,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
     initialCheck()
 
     // SSE: subscribe to each org for real-time ticket updates
-    const orgs = [...new Set(workload.map(w => w.organization))]
+    const orgs = [...new Set(focus.map(w => w.organization))]
 
     for (const org of orgs) {
       const controller = new AbortController()
@@ -244,7 +244,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
                     const next = new Set(prev)
                     let changed = false
                     for (const ticket of tickets) {
-                      if (!workloadTicketIds.has(ticket.ticket_id)) continue
+                      if (!focusTicketIds.has(ticket.ticket_id)) continue
                       const isRunning = ticket.status === 'in_progress'
                       if (isRunning && !prev.has(ticket.ticket_id)) {
                         next.add(ticket.ticket_id)
@@ -256,8 +256,8 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
                     }
                     return changed ? next : prev
                   })
-                  // Auto-check workload items when ticket status becomes done
-                  setWorkload(prev => {
+                  // Auto-check focus items when ticket status becomes done
+                  setFocus(prev => {
                     let changed = false
                     const next = prev.map(w => {
                       const ticket = tickets.find(t => t.ticket_id === w.ticket_id)
@@ -289,7 +289,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
     }
 
     return () => controllers.forEach(c => c.abort())
-  }, [workload, workloadTicketIds])
+  }, [focus, focusTicketIds])
 
   const goBack = () => setSelectedDate(prev => shiftDate(prev, -1))
   const goForward = () => setSelectedDate(prev => shiftDate(prev, 1))
@@ -330,18 +330,18 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
     setPullingOrgs(prev => new Set(prev).add(org))
     setPullErrors(prev => { const next = { ...prev }; delete next[org]; return next })
     try {
-      const res = await fetch('/api/home/project-workload/pull', {
+      const res = await fetch('/api/home/focus/pull', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ organization: org }),
       })
       if (res.ok) {
-        const item: WorkloadItem = await res.json()
-        setWorkload(prev => [item, ...prev])
+        const item: FocusItem = await res.json()
+        setFocus(prev => [item, ...prev])
       } else {
         const errorText = await res.text().catch(() => 'Unknown error')
         const msg = res.status === 404 ? 'No suitable tickets found'
-          : res.status === 409 ? 'Ticket already in workload'
+          : res.status === 409 ? 'Ticket already in focus'
           : res.status === 422 ? 'Agent failed to select a ticket'
           : `Error: ${errorText}`
         setPullErrors(prev => ({ ...prev, [org]: msg }))
@@ -356,23 +356,23 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
     }
   }
 
-  const toggleWorkloadItem = async (item: WorkloadItem) => {
+  const toggleFocusItem = async (item: FocusItem) => {
     setTogglingItems(prev => new Set(prev).add(item.id))
-    setWorkload(prev => prev.map(w =>
+    setFocus(prev => prev.map(w =>
       w.id === item.id ? { ...w, checked: !w.checked } : w
     ))
 
     try {
-      const res = await fetch('/api/home/project-workload/toggle', {
+      const res = await fetch('/api/home/focus/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: item.id }),
       })
       if (!res.ok) {
-        fetchWorkload()
+        fetchFocus()
       }
     } catch {
-      fetchWorkload()
+      fetchFocus()
     } finally {
       setTogglingItems(prev => {
         const next = new Set(prev)
@@ -593,7 +593,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
               <CollapsibleContent>
                 <div className="space-y-2 ml-1">
                   {organizations.map(({ id: org, displayName: label }) => {
-                    const items = workload.filter(w => w.organization === org)
+                    const items = focus.filter(w => w.organization === org)
                     return (
                       <div key={org}>
                         <div className="flex items-center gap-1.5 px-1 mb-0.5">
@@ -637,7 +637,7 @@ export function DailyPlanSidebar({ onTicketClick, selectedTicketId }: DailyPlanS
                                   <input
                                     type="checkbox"
                                     checked={item.checked}
-                                    onChange={() => toggleWorkloadItem(item)}
+                                    onChange={() => toggleFocusItem(item)}
                                     disabled={togglingItems.has(item.id)}
                                     className="mt-0.5 rounded border-muted-foreground/30 cursor-pointer"
                                   />

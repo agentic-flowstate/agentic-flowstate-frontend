@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { API_BASE } from '@/lib/api/config'
 
 export async function GET(request: NextRequest) {
-  const res = await fetch(`${API_BASE}/api/project-workload`, {
+  const res = await fetch(`${API_BASE}/api/focus`, {
     headers: { Cookie: request.headers.get('cookie') || '' },
   })
 
   if (!res.ok) {
-    return NextResponse.json({ error: 'Failed to fetch workload' }, { status: res.status })
+    return NextResponse.json({ error: 'Failed to fetch focus' }, { status: res.status })
   }
 
   const data = await res.json()
@@ -21,7 +21,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'id required' }, { status: 400 })
   }
 
-  const res = await fetch(`${API_BASE}/api/project-workload/${id}`, {
+  const res = await fetch(`${API_BASE}/api/focus/${id}`, {
     method: 'DELETE',
     headers: { Cookie: request.headers.get('cookie') || '' },
   })
