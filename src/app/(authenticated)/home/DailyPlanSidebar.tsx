@@ -24,6 +24,7 @@ interface DailyPlan {
 
 export interface FocusItem {
   id: string
+  user_id: string
   organization: string
   ticket_id: string
   ticket_title: string
