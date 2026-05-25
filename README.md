@@ -1,3 +1,0 @@
-# agentic-frontend
-
-frontend repository
